@@ -9,7 +9,6 @@ from aiogram.filters.command import Command
 import ai_core
 import sql_worker
 import utils
-from ai_core import ApiRequestException
 
 config = utils.ConfigData()
 bot = Bot(token=config.token)
@@ -327,7 +326,7 @@ async def handler(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action='typing')
     try:
         answer = await dialogs.get(message.chat.id).get_answer(message, reply_msg, photo_base64)
-    except ApiRequestException as e:
+    except ai_core.ApiRequestException as e:
         await message.reply(str(e))
         return
     answer = utils.answer_parser(answer, chat_config)
@@ -341,7 +340,7 @@ async def main():
     get_me = await bot.get_me()
     config.my_id = get_me.id
     config.my_username = f"@{get_me.username}"
-    logging.info("###AITRONIC v0.1 alpha LAUNCHED SUCCESSFULLY###")
+    logging.info("###AITRONIC v0.1.1 alpha LAUNCHED SUCCESSFULLY###")
     await dp.start_polling(bot)
 
 

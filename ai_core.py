@@ -64,6 +64,8 @@ class Dialog:
 
     def set_chat_config(self, sql_helper, chat_config, msg_chat_id, param_name=None):
         self.__chat_config = chat_config
+        if param_name == 'vision' and not chat_config.get('vision'):
+            self.cleaning_images(self.dialog_history)
         if param_name in ('vendor', 'api_key', 'base_url'):
             self.client = self.make_client()
         sql_helper.dialog_conf_update(chat_config, msg_chat_id)

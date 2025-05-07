@@ -23,7 +23,7 @@ init_dict = {
     'attempts': 7,
     'threads_limit': 10,
     'markdown_enable': True,
-    'split_paragraphs': True,
+    'split_paragraphs': False,
     'reply_to_quotes': True,
     'max_answer_len': 2000,
     'summarizer_limit': 12000,
@@ -311,5 +311,7 @@ async def send_message(message, bot, text, parse=None, reply=False):
         if "can't parse entities" in str(exc):
             logging.warning("Telegram could not parse markdown in message, it will be sent without formatting")
             await send_message(message, bot, text, reply=reply)
-        elif not ("text must be non-empty" in str(exc) or 'message text is empty' in str(exc)) :
+        elif "text must be non-empty" in str(exc) or 'message text is empty' in str(exc):
+            logging.warning(f"Failed to send empty message in chat! Message content: {text}")
+        else:
             logging.error(traceback.format_exc())
