@@ -16,7 +16,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.3 alpha'
+version = '0.3.1 alpha'
 
 dialogs = {}
 

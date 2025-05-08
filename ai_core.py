@@ -224,7 +224,11 @@ class Dialog:
         chat_name = f"{username}'s private messages" if message.chat.title is None else f'chat {message.chat.title}'
         reply_msg_text = ""
         if reply_msg and self.dialog_history:
-            if not self.dialog_history[-1]['content'] == reply_msg["text"]:
+            last_message = self.dialog_history[-1]['content']
+            # This cumbersome design allows not to clutter the dialog context
+            # with old messages, even if a token counter is used.
+            if (last_message != reply_msg["text"][:len(last_message)]
+                    or abs(len(last_message) -  len(reply_msg["text"])) > 100):
                 reply_msg_text = f'Previous message ({reply_msg["name"]}): "{reply_msg["text"]}"\n'
 
         msg_txt = message.text or message.caption or utils.get_poll_text(message)
