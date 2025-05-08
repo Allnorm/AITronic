@@ -100,8 +100,7 @@ class Dialog:
                 messages=messages,
                 temperature=self.__chat_config.get('temperature'),
                 max_tokens=self.__chat_config.get('max_answer_len'),
-                stream=False,
-                timeout=150)
+                stream=False)
             answer = completion.choices[0].message.content
             if not answer or answer.isspace():
                 raise ApiRequestException("Empty text result!")
@@ -128,8 +127,7 @@ class Dialog:
                     system=self.__chat_config.get('system_prompt'),
                     temperature=self.__chat_config.get('temperature'),
                     max_tokens=self.__chat_config.get('max_answer_len'),
-                    stream=False,
-                    timeout=150
+                    stream=False
                 )
                 if "error" in completion.id:
                     logging.error(completion.content[0].text)
@@ -157,8 +155,7 @@ class Dialog:
                     messages=messages,
                     system=self.__chat_config.get('system_prompt'),
                     temperature=self.__chat_config.get('temperature'),
-                    max_tokens=self.__chat_config.get('max_answer_len'),
-                    timeout=150
+                    max_tokens=self.__chat_config.get('max_answer_len')
             ) as stream:
                 empty_stream = True
                 error = False
