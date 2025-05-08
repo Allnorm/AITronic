@@ -16,7 +16,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.3.4 alpha'
+version = '0.3.5 beta'
 
 dialogs = {}
 
@@ -85,7 +85,10 @@ async def help_(message: types.Message):
               "Режим конфигурации будет автоматически отключен через 5 минут после его активации. Даже если вы "
               "не находитесь в вайтлисте бота, то всё равно можете настроить его в чате таким образом.\n"
               "Для личных сообщений бот настраивается аналогично, "
-              "но команды /confai edit и /confai done там не используются.")
+              "но команды /confai edit и /confai done там не используются.\n"
+              "Вы можете сохранять настройки чата как шаблон или загружать их из шаблона. "
+              "Более подробная информация об этой возможности доступна с помощью команды /template.\n"
+              "Для сброса диалога введите команду /reset.")
     await message.reply(answer)
 
 @dp.message(Command("confai"))
