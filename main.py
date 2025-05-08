@@ -14,6 +14,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
+version = '0.2 alpha'
 
 dialogs = {}
 
@@ -225,7 +226,12 @@ async def confai(message: types.Message):
     if param_name == 'reset':
         reset_param_name = utils.extract_arg(message.text, 2)
         if reset_param_name:
-            if chat_config.get(reset_param_name.replace("-", "_")):
+            if reset_param_name.replace("-", "_") in chat_config:
+                if utils.init_dict.keys() != chat_config.keys():
+                    await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
+                                        "(это возможно после обновления бота или повреждения БД)!\n"
+                                        "Требуется сбросить настройки чата командой /confai reset.")
+                    return
                 chat_config.update({reset_param_name.replace("-", "_"):
                                         utils.init_dict.get(reset_param_name.replace("-", "_"))})
                 reset_param_name = f"параметра {reset_param_name} "
@@ -244,7 +250,13 @@ async def confai(message: types.Message):
         finally:
             return
 
-    if param_name.replace("-", "_") not in list(chat_config.keys()):
+    if utils.init_dict.keys() != chat_config.keys():
+        await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
+                            "(это возможно после обновления бота или повреждения БД)!\n"
+                            "Требуется сбросить настройки чата командой /confai reset.")
+        return
+
+    if param_name.replace("-", "_") not in chat_config:
         await message.reply(f"Данный параметр не найден в списке настраиваемых параметров.")
         return
 
@@ -336,11 +348,20 @@ async def handler(message: types.Message):
         await asyncio.sleep(3)
         await utils.send_message(message, bot, paragraph, parse=parse_mode)
 
+
+@dp.message(Command("version"))
+async def version_(message: types.Message):
+    if await utils.check_whitelist(message, config):
+        await message.reply(f'AITronic, версия {version}\n'
+                            'Дата сборки: 08.05.2025\n'
+                            'Created by Allnorm aka DvadCat')
+
+
 async def main():
     get_me = await bot.get_me()
     config.my_id = get_me.id
     config.my_username = f"@{get_me.username}"
-    logging.info("###AITRONIC v0.1.1 alpha LAUNCHED SUCCESSFULLY###")
+    logging.info(f"###AITRONIC v{version} LAUNCHED SUCCESSFULLY###")
     await dp.start_polling(bot)
 
 

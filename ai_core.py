@@ -90,119 +90,122 @@ class Dialog:
         if self.__chat_config.get('prefill'):
             messages.append({"role": "assistant", "content": self.__chat_config.get('prefill')})
 
-        error_text = None
-
-        for _ in range(self.__chat_config.get('attempts')):
-            completion = 'The "completion" object was not received.'
-            try:
-                completion = self.client.chat.completions.create(
-                    model=self.__chat_config.get('model'),
-                    messages=messages,
-                    temperature=self.__chat_config.get('temperature'),
-                    max_tokens=self.__chat_config.get('max_answer_len'),
-                    stream=False)
-                answer = completion.choices[0].message.content
-                total_tokens = completion.usage.total_tokens
-                if total_tokens == 0:
-                    raise ApiRequestException(f'The "total_tokens" field in the API response is zero.\n'
-                                              f'API response: {answer}')
-                return answer, total_tokens
-            except Exception as e:
-                error_text = self.html_parser(e)
-                logging.error(f"OPENAI API REQUEST ERROR!\n{self.html_parser(e)}")
-                if self.global_config.full_debug:
-                    logging.error(traceback.format_exc())
-                    logging.error(completion)
-
-        raise ApiRequestException(error_text)
+        completion = 'The "completion" object was not received.'
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.__chat_config.get('model'),
+                messages=messages,
+                temperature=self.__chat_config.get('temperature'),
+                max_tokens=self.__chat_config.get('max_answer_len'),
+                stream=False)
+            answer = completion.choices[0].message.content
+            total_tokens = completion.usage.total_tokens
+            if total_tokens == 0:
+                raise ApiRequestException(f'The "total_tokens" field in the API response is zero.\n'
+                                          f'API response: {answer}')
+            if not answer or answer.isspace():
+                raise ApiRequestException("Empty text result!")
+            return answer, total_tokens
+        except Exception as e:
+            logging.error(f"OPENAI API REQUEST ERROR!\n{self.html_parser(e)}")
+            if self.global_config.full_debug:
+                logging.error(traceback.format_exc())
+                logging.error(completion)
+            raise ApiRequestException(self.html_parser(e))
 
     def send_api_request_anthropic(self, messages):
 
         if self.__chat_config.get('prefill'):
             messages.append({"role": "assistant", "content": self.__chat_config.get('prefill')})
 
-        error_text = None
-
-        for _ in range(self.__chat_config.get('attempts')):
-            completion = 'The "completion" object was not received.'
-            if not self.__chat_config.get('stream'):
-                try:
-                    completion = self.client.messages.create(
-                        model=self.__chat_config.get('model'),
-                        messages=messages,
-                        system=self.__chat_config.get('system_prompt'),
-                        temperature=self.__chat_config.get('temperature'),
-                        max_tokens=self.__chat_config.get('max_answer_len'),
-                        stream=False
-                    )
-                    if "error" in completion.id:
-                        logging.error(completion.content[0].text)
-                        raise ApiRequestException(completion.content[0].text)
-                    text = completion.content[0].text
-                    while text[0] in (" ", "\n"):  # Sometimes Anthropic spits out spaces and line breaks
-                        text = text[1::]  # at the beginning of text
-                    return text, completion.usage.input_tokens + completion.usage.output_tokens
-                except Exception as e:
-                    error_text = self.html_parser(e)
-                    logging.error(f"ANTHROPIC API REQUEST ERROR!\n{self.html_parser(e)}")
-                    if self.global_config.full_debug:
-                        logging.error(traceback.format_exc())
-                        logging.error(completion)
-                    continue
-
+        completion = 'The "completion" object was not received.'
+        if not self.__chat_config.get('stream'):
             try:
-                tokens_count = 0
-                text = ""
-                with self.client.messages.stream(
-                        model=self.__chat_config.get('model'),
-                        messages=messages,
-                        system=self.__chat_config.get('system_prompt'),
-                        temperature=self.__chat_config.get('temperature'),
-                        max_tokens=self.__chat_config.get('max_answer_len'),
-                ) as stream:
-                    empty_stream = True
-                    error = False
-                    for event in stream:
-                        empty_stream = False
-                        name = event.__class__.__name__
-                        if name == "MessageStartEvent":
-                            if event.message.usage:
-                                tokens_count += event.message.usage.input_tokens
-                            else:
-                                error = True
-                        elif name == "ContentBlockDeltaEvent":
-                            text += event.delta.text
-                        elif name == "MessageDeltaEvent":
-                            tokens_count += event.usage.output_tokens
-                        elif name == "Error":
-                            logging.error(event.error.message)
-                            raise ApiRequestException
-                    if empty_stream:
-                        raise ApiRequestException("Empty stream object, please check your proxy connection!")
-                    if error:
-                        raise ApiRequestException(text)
-                    if not text:
-                        raise ApiRequestException("Empty text result, please check your prefill!")
-                while text[0] in (" ", "\n"):
-                    text = text[1::]
-                return text, tokens_count
+                completion = self.client.messages.create(
+                    model=self.__chat_config.get('model'),
+                    messages=messages,
+                    system=self.__chat_config.get('system_prompt'),
+                    temperature=self.__chat_config.get('temperature'),
+                    max_tokens=self.__chat_config.get('max_answer_len'),
+                    stream=False
+                )
+                if "error" in completion.id:
+                    logging.error(completion.content[0].text)
+                    raise ApiRequestException(completion.content[0].text)
+                text = completion.content[0].text
+                if not text or text.isspace():
+                    raise ApiRequestException("Empty text result, please check your prefill!")
+                while text[0] in (" ", "\n"):  # Sometimes Anthropic spits out spaces and line breaks
+                    text = text[1::]  # at the beginning of text
+                if not (completion.usage.input_tokens and completion.usage.output_tokens):
+                    raise ApiRequestException(f'The "input_tokens" ot "output_tokens" field in '
+                                              f'the API response is zero.\nAPI response: {text}')
+                return text, completion.usage.input_tokens + completion.usage.output_tokens
             except Exception as e:
-                error_text = self.html_parser(e)
                 logging.error(f"ANTHROPIC API REQUEST ERROR!\n{self.html_parser(e)}")
                 if self.global_config.full_debug:
                     logging.error(traceback.format_exc())
                     logging.error(completion)
-                continue
+                raise ApiRequestException(self.html_parser(e))
 
-        raise ApiRequestException(error_text)
+        try:
+            tokens_count = 0
+            text = ""
+            with self.client.messages.stream(
+                    model=self.__chat_config.get('model'),
+                    messages=messages,
+                    system=self.__chat_config.get('system_prompt'),
+                    temperature=self.__chat_config.get('temperature'),
+                    max_tokens=self.__chat_config.get('max_answer_len'),
+            ) as stream:
+                empty_stream = True
+                error = False
+                for event in stream:
+                    empty_stream = False
+                    name = event.__class__.__name__
+                    if name == "MessageStartEvent":
+                        if event.message.usage:
+                            tokens_count += event.message.usage.input_tokens
+                        else:
+                            error = True
+                    elif name == "ContentBlockDeltaEvent":
+                        text += event.delta.text
+                    elif name == "MessageDeltaEvent":
+                        tokens_count += event.usage.output_tokens
+                    elif name == "Error":
+                        logging.error(event.error.message)
+                        raise ApiRequestException
+                if empty_stream:
+                    raise ApiRequestException("Empty stream object, please check your proxy connection!")
+                if error:
+                    raise ApiRequestException(text)
+                if not text or text.isspace():
+                    raise ApiRequestException("Empty text result, please check your prefill!")
+            while text[0] in (" ", "\n"):
+                text = text[1::]
+            return text, tokens_count
+        except Exception as e:
+            logging.error(f"ANTHROPIC API REQUEST ERROR!\n{self.html_parser(e)}")
+            if self.global_config.full_debug:
+                logging.error(traceback.format_exc())
+                logging.error(completion)
+            raise ApiRequestException(self.html_parser(e))
 
     async def send_api_request(self, messages):
-        if self.__chat_config.get('vendor') == 'anthropic':
-            return await asyncio.get_running_loop().run_in_executor(
-                None, self.send_api_request_anthropic, (messages,))
-        else:
-            return await asyncio.get_running_loop().run_in_executor(
-                    None, self.send_api_request_openai, messages)
+        attempts = self.__chat_config.get('attempts')
+        for attempt in range(attempts):
+            try:
+                if self.__chat_config.get('vendor') == 'anthropic':
+                    return await asyncio.get_running_loop().run_in_executor(
+                        None, self.send_api_request_anthropic, messages)
+                else:
+                    return await asyncio.get_running_loop().run_in_executor(
+                        None, self.send_api_request_openai, messages)
+            except ApiRequestException as e:
+                if attempt + 1 == attempts:
+                    raise e
+                continue
+        return None
 
     def get_image_context(self, photo_base64, prompt):
         if self.__chat_config.get('vendor') == 'anthropic':
