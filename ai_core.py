@@ -64,9 +64,12 @@ class Dialog:
 
     def set_chat_config(self, sql_helper, chat_config, msg_chat_id, param_name=None):
         self.__chat_config = chat_config
-        if param_name == 'vision' and not chat_config.get('vision'):
+        if not param_name:
             self.cleaning_images(self.dialog_history)
-        if param_name in ('vendor', 'api_key', 'base_url'):
+            self.client = self.make_client()
+        elif param_name == 'vision' and not chat_config.get('vision'):
+            self.cleaning_images(self.dialog_history)
+        elif param_name in ('vendor', 'api_key', 'base_url'):
             self.client = self.make_client()
         sql_helper.dialog_conf_update(chat_config, msg_chat_id)
 
@@ -99,13 +102,10 @@ class Dialog:
                 max_tokens=self.__chat_config.get('max_answer_len'),
                 stream=False)
             answer = completion.choices[0].message.content
-            total_tokens = completion.usage.total_tokens
-            if total_tokens == 0:
-                raise ApiRequestException(f'The "total_tokens" field in the API response is zero.\n'
-                                          f'API response: {answer}')
             if not answer or answer.isspace():
                 raise ApiRequestException("Empty text result!")
-            return answer, total_tokens
+            return (answer, completion.usage.total_tokens,
+                    completion.usage.prompt_tokens, completion.usage.completion_tokens)
         except Exception as e:
             logging.error(f"OPENAI API REQUEST ERROR!\n{self.html_parser(e)}")
             if self.global_config.full_debug:
@@ -137,10 +137,8 @@ class Dialog:
                     raise ApiRequestException("Empty text result, please check your prefill!")
                 while text[0] in (" ", "\n"):  # Sometimes Anthropic spits out spaces and line breaks
                     text = text[1::]  # at the beginning of text
-                if not (completion.usage.input_tokens and completion.usage.output_tokens):
-                    raise ApiRequestException(f'The "input_tokens" ot "output_tokens" field in '
-                                              f'the API response is zero.\nAPI response: {text}')
-                return text, completion.usage.input_tokens + completion.usage.output_tokens
+                return (text, completion.usage.input_tokens + completion.usage.output_tokens,
+                        completion.usage.input_tokens, completion.usage.output_tokens)
             except Exception as e:
                 logging.error(f"ANTHROPIC API REQUEST ERROR!\n{self.html_parser(e)}")
                 if self.global_config.full_debug:
@@ -149,7 +147,8 @@ class Dialog:
                 raise ApiRequestException(self.html_parser(e))
 
         try:
-            tokens_count = 0
+            input_count = 0
+            output_count = 0
             text = ""
             with self.client.messages.stream(
                     model=self.__chat_config.get('model'),
@@ -165,13 +164,13 @@ class Dialog:
                     name = event.__class__.__name__
                     if name == "MessageStartEvent":
                         if event.message.usage:
-                            tokens_count += event.message.usage.input_tokens
+                            input_count += event.message.usage.input_tokens
                         else:
                             error = True
                     elif name == "ContentBlockDeltaEvent":
                         text += event.delta.text
                     elif name == "MessageDeltaEvent":
-                        tokens_count += event.usage.output_tokens
+                        output_count += event.usage.output_tokens
                     elif name == "Error":
                         logging.error(event.error.message)
                         raise ApiRequestException
@@ -183,7 +182,7 @@ class Dialog:
                     raise ApiRequestException("Empty text result, please check your prefill!")
             while text[0] in (" ", "\n"):
                 text = text[1::]
-            return text, tokens_count
+            return text, input_count + output_count, input_count, output_count
         except Exception as e:
             logging.error(f"ANTHROPIC API REQUEST ERROR!\n{self.html_parser(e)}")
             if self.global_config.full_debug:
@@ -240,7 +239,7 @@ class Dialog:
         else:
             dialog_buffer.append({"role": "user", "content": prompt})
         try:
-            answer, total_tokens = await self.send_api_request(dialog_buffer)
+            answer, total_tokens, input_tokens, output_tokens = await self.send_api_request(dialog_buffer)
             if self.global_config.full_debug:
                 logging.info(f"--FULL DEBUG INFO FOR API REQUEST--\n\n{self.system_prompt}\n\n{dialog_buffer}"
                              f"\n\n{answer}\n\n--END OF FULL DEBUG INFO FOR API REQUEST--")
@@ -268,6 +267,9 @@ class Dialog:
                 await self.summarizer(chat_name)
             except ApiRequestException as e:
                 message.reply(f"Ошибка суммарайзинга диалога: {e}.\nПросьба проверить логи бота!")
+
+        if self.__chat_config.get('show_used_tokens'):
+            answer = utils.token_counter_formatter(answer, total_tokens, input_tokens, output_tokens)
         try:
             self.sql_helper.dialog_update(self.dialog_history, self.chat_id)
         except Exception as e:
@@ -325,7 +327,7 @@ class Dialog:
         # When sending pictures to the summarizer, it does not work correctly, so we delete them
         compressed_dialogue = self.cleaning_images(compressed_dialogue)
         try:
-            answer, total_tokens = await self.send_api_request(compressed_dialogue)
+            answer, total_tokens, _, _ = await self.send_api_request(compressed_dialogue)
             if self.global_config.full_debug:
                 logging.debug(f"--FULL DEBUG INFO FOR DIALOG COMPRESSING--\n\n{compressed_dialogue}"
                               f"\n\n{answer}\n\n--END OF FULL DEBUG INFO FOR DIALOG COMPRESSING--")

@@ -25,15 +25,19 @@ init_dict = {
     'markdown_enable': True,
     'split_paragraphs': False,
     'reply_to_quotes': True,
+    'show_used_tokens': True,
+    'allow_config_everyone': False,
     'max_answer_len': 2000,
     'summarizer_limit': 12000,
     'summariser_prompt': 'Create a short summary of the text previously discussed with the user.',
     'prefill_prompt': None
 }
 
-mandatory_parameters = ('api_key', 'model')
-private_parameters = ('api_key', 'system_prompt', 'base_url')
-
+mandatory_params = ('api_key', 'model')
+private_params = ('api_key', 'system_prompt', 'base_url')
+bool_params = ('vision', 'stream_mode', 'markdown_enable', 'allow_config_everyone',
+               'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
+int_params = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
 
 class IncorrectConfig(Exception):
     pass
@@ -177,8 +181,10 @@ def config_validator(name, value):
     if name == 'vendor':
         if value not in ('openai', 'anthropic'):
             raise IncorrectConfig('"vendor" может быть только "openai" или "anthropic".')
-    elif name in ('vision', 'stream_mode', 'markdown_enable', 'split_paragraphs', 'reply_to_quotes'):
-        if value.lower() == "false":
+    elif name in bool_params:
+        if isinstance(value, bool):
+            pass
+        elif value.lower() == "false":
             value = False
         elif value.lower() == "true":
             value = True
@@ -186,16 +192,18 @@ def config_validator(name, value):
             raise IncorrectConfig(f'"{name_replace}" может иметь значения только "true" или "false".')
     elif name == 'temperature':
         try:
-            value = float(value.replace(",", "."))
+            if isinstance(value, str):
+                value = float(value.replace(",", "."))
         except ValueError:
             raise IncorrectConfig('"temperature" не является числом с плавающей запятой.')
         if not 0 <= value <= 2:
             raise IncorrectConfig('"temperature" имеет недопустимое значение (допускается от 0 до 2, включая дробные).')
-    elif name in ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit'):
+    elif name in int_params:
         try:
-            if not value.isdigit():
-                raise ValueError
-            value = int(value)
+            if isinstance(value, str):
+                if not value.isdigit():
+                    raise ValueError
+                value = int(value)
         except ValueError:
             raise IncorrectConfig(f'"{name_replace}" не является целым числом.')
     if name == 'attempts' and not 1 <= value <= 10:
@@ -315,3 +323,49 @@ async def send_message(message, bot, text, parse=None, reply=False):
             logging.warning(f"Failed to send empty message in chat! Message content: {text}")
         else:
             logging.error(traceback.format_exc())
+
+
+def token_counter_formatter(answer, total_tokens, input_tokens, output_tokens):
+    if not (answer or total_tokens or input_tokens):
+        return f'{answer}\n\n---\n⚠️ Счётчик токенов и суммарайзер не работают на этом API.'
+    if input_tokens and output_tokens:
+        in_and_out = f' ({input_tokens} запрос, {output_tokens} ответ)'
+    elif input_tokens:
+        in_and_out = f' ({input_tokens} запрос)'
+    elif output_tokens:
+        in_and_out = f' ({output_tokens} ответ)'
+    else:
+        in_and_out = ""
+    if not total_tokens:
+        total_tokens = input_tokens + output_tokens
+    return f'{answer}\n\n---\n💰 {total_tokens} токенов чата использовано{in_and_out}'
+
+
+def get_current_params(chat_config, accept_show_privates=False):
+    answer = "<blockquote expandable>"
+    for key, value in chat_config.items():
+        if value is None:
+            value_text = "не установлен"
+        elif key in private_params and not accept_show_privates:
+            value_text = "установлен, скрыт"
+        elif key == 'api_key':
+            if len(value) > 10:
+                value_text = value[:3] + '*' * (len(value) - 6) + value[-3:]
+            else:
+                value_text = '*' * len(value)
+        elif isinstance(value, bool):
+            value_text = str(value).lower()
+        else:
+            value_text = value
+        result_str = html_fix(f'* {key.replace("_", "-")}: {value_text}')
+        if key in mandatory_params:
+            result_str = f'<b>{result_str}</b>'
+        if key in private_params:
+            result_str = f'<i>{result_str}</i>'
+        answer += result_str + '\n'
+    answer = answer.rstrip()
+    answer += ("</blockquote>\nЕсли параметр выделен <b>жирным</b>, то он является обязательным, "
+               "и без него запуск диалога с LLM невозможен.\nЕсли параметр выделен <i>курсивом</i>, "
+               "то он является непубличным. Значение непубличных параметров можно посмотреть в "
+               "режиме настройки чата в ЛС с ботом с помощью команды /confai.")
+    return answer
