@@ -16,7 +16,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.4 beta'
+version = '0.4.1 beta'
 
 dialogs = {}
 
@@ -223,7 +223,8 @@ async def confai(message: types.Message):
             reset_param_name = ""
 
         try:
-            dialogs.get(msg_chat_id).set_chat_config(sql_helper, chat_config, msg_chat_id, param_name)
+            dialogs.get(msg_chat_id).set_chat_config(sql_helper, chat_config,
+                                                     msg_chat_id, reset_param_name.replace('-', "_"))
             await message.reply(f'Настройки {reset_param_name}для {chat_name} успешно сброшены!')
         except Exception as e:
             logging.error(traceback.format_exc())
