@@ -19,8 +19,8 @@ class Dialog:
 
     __chat_config: dict
 
-    def __init__(self, chat_id, global_config, sql_helper: sql_worker.SqlWorker):
-        self.__chat_config = json.loads(sql_helper.get_dialog_data(chat_id, utils.init_dict)[1])
+    def __init__(self, chat_id, global_config, sql_helper: sql_worker.SqlWorker, chat_config_template):
+        self.__chat_config = json.loads(sql_helper.get_dialog_data(chat_id, chat_config_template)[1])
         self.summarizer_used = False
         self.threads_semaphore = asyncio.Semaphore(self.__chat_config.get('threads_limit'))
         self.global_config = global_config

@@ -1,4 +1,5 @@
 import configparser
+import json
 import logging
 import os
 import sys
@@ -11,7 +12,7 @@ from typing import Optional
 from aiogram import types, exceptions
 
 
-init_dict = {
+CHAT_CONFIG_TEMPLATE = {
     'api_key': None,
     'system_prompt': None,
     'model': None,
@@ -33,11 +34,12 @@ init_dict = {
     'prefill_prompt': None
 }
 
-mandatory_params = ('api_key', 'model')
-private_params = ('api_key', 'system_prompt', 'base_url')
-bool_params = ('vision', 'stream_mode', 'markdown_enable', 'allow_config_everyone',
+MANDATORY_PARAMS = ('api_key', 'model')
+PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url')
+BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'allow_config_everyone',
                'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
-int_params = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
+INT_PARAMS = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
+
 
 class IncorrectConfig(Exception):
     pass
@@ -48,6 +50,7 @@ class ConfigData:
 
         self.config_mode_chats = {}
         self.config_mode_timer = {}
+        self.chat_config_template = CHAT_CONFIG_TEMPLATE
 
         reload(logging)
         logging.basicConfig(
@@ -72,6 +75,8 @@ class ConfigData:
                 self.whitelist = config["Bot"]["whitelist-chats"]
                 self.tag_phrase = config["Bot"]["tag-phrase"]
                 self.full_debug = self.bool_init(config["Bot"]["full-debug"])
+                if self.bool_init(config["Bot"]["use-json-template"]):
+                    self.json_template_init()
                 break
             except Exception as e:
                 logging.error(str(e))
@@ -99,6 +104,7 @@ class ConfigData:
         config.set("Bot", "whitelist-chats", "")
         config.set("Bot", "tag-phrase", "gpt")
         config.set("Bot", "full-debug", "false")
+        config.set("Bot", "use-json-template", "true")
         try:
             config.write(open("config.ini", "w"))
             print("New config file was created successful")
@@ -114,7 +120,33 @@ class ConfigData:
         elif var.lower() in ("true", "1"):
             return True
         else:
-            raise TypeError
+            raise TypeError(f'incorrect bool parameter "{var}"')
+
+    def json_template_init(self):
+        try:
+            with open("template.json", "r", encoding='utf-8') as json_file:
+                json_template: dict = json.loads(json_file.read())
+        except Exception as e:
+            logging.error(f'Error reading file "template.json". '
+                          f'The default chat settings template will be loaded.\n{e}')
+            logging.error(traceback.format_exc())
+
+        if json_template.keys() != CHAT_CONFIG_TEMPLATE.keys():
+            logging.error('The keys in the loaded JSON template do not match the keys in the sample template. '
+                          'The default chat settings template will be loaded.')
+            return
+
+        try:
+            for name, value in json_template.items():
+                config_validator(name, value)
+        except IncorrectConfig as e:
+            logging.error(f'The loaded JSON template is invalid: {e}. '
+                          f'The default chat settings template will be loaded.')
+            return
+
+        self.chat_config_template = json_template
+        logging.info('The JSON settings template has been successfully loaded.')
+
 
 def username_parser(message, html=False):
     if message.from_user.first_name == "":
@@ -181,7 +213,7 @@ def config_validator(name, value):
     if name == 'vendor':
         if value not in ('openai', 'anthropic'):
             raise IncorrectConfig('"vendor" может быть только "openai" или "anthropic".')
-    elif name in bool_params:
+    elif name in BOOL_PARAMS:
         if isinstance(value, bool):
             pass
         elif value.lower() == "false":
@@ -198,7 +230,7 @@ def config_validator(name, value):
             raise IncorrectConfig('"temperature" не является числом с плавающей запятой.')
         if not 0 <= value <= 2:
             raise IncorrectConfig('"temperature" имеет недопустимое значение (допускается от 0 до 2, включая дробные).')
-    elif name in int_params:
+    elif name in INT_PARAMS:
         try:
             if isinstance(value, str):
                 if not value.isdigit():
@@ -346,7 +378,7 @@ def get_current_params(chat_config, accept_show_privates=False):
     for key, value in chat_config.items():
         if value is None:
             value_text = "не установлен"
-        elif key in private_params and not accept_show_privates:
+        elif key in PRIVATE_PARAMS and not accept_show_privates:
             value_text = "установлен, скрыт"
         elif key == 'api_key':
             if len(value) > 10:
@@ -358,9 +390,9 @@ def get_current_params(chat_config, accept_show_privates=False):
         else:
             value_text = value
         result_str = html_fix(f'* {key.replace("_", "-")}: {value_text}')
-        if key in mandatory_params:
+        if key in MANDATORY_PARAMS:
             result_str = f'<b>{result_str}</b>'
-        if key in private_params:
+        if key in PRIVATE_PARAMS:
             result_str = f'<i>{result_str}</i>'
         answer += result_str + '\n'
     answer = answer.rstrip()

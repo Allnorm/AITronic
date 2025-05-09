@@ -16,7 +16,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.3.5 beta'
+version = '0.4 beta'
 
 dialogs = {}
 
@@ -27,7 +27,8 @@ async def start(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
+            dialogs.update({message.chat.id:
+                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -51,7 +52,8 @@ async def confai(message: types.Message):
 
     if not dialogs.get(message.chat.id):
         try:
-            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
+            dialogs.update({message.chat.id:
+                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -119,7 +121,8 @@ async def confai(message: types.Message):
 
     if dialogs.get(msg_chat_id) is None:
         try:
-            dialogs.update({msg_chat_id: ai_core.Dialog(msg_chat_id, config, sql_helper)})
+            dialogs.update({msg_chat_id:
+                                ai_core.Dialog(msg_chat_id, config, sql_helper, config.chat_config_template)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -197,7 +200,7 @@ async def confai(message: types.Message):
             await message.reply("В режиме конфигурации вы можете настраивать "
                                 "бота только в ЛС или конфигурируемом чате!")
             return
-        elif param_name.replace("-", "_") in utils.private_params:
+        elif param_name.replace("-", "_") in utils.PRIVATE_PARAMS:
             await message.reply(f"Настраивать приватные параметры разрешено только в ЛС бота.")
             return
 
@@ -205,18 +208,18 @@ async def confai(message: types.Message):
         reset_param_name = utils.extract_arg(message.text, 2)
         if reset_param_name:
             if reset_param_name.replace("-", "_") in chat_config:
-                if utils.init_dict.keys() != chat_config.keys():
+                if config.chat_config_template.keys() != chat_config.keys():
                     await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
                                         "(это могло произойти после обновления бота или повреждения данных в БД).\n"
                                         "Требуется сбросить настройки чата командой /confai reset.")
                     return
                 chat_config.update({reset_param_name.replace("-", "_"):
-                                        utils.init_dict.get(reset_param_name.replace("-", "_"))})
+                                        config.chat_config_template.get(reset_param_name.replace("-", "_"))})
                 reset_param_name = f"параметра {reset_param_name} "
             else:
                 await message.reply(f"Параметр {reset_param_name} не найден в списке параметров.")
         else:
-            chat_config = utils.init_dict
+            chat_config = config.chat_config_template
             reset_param_name = ""
 
         try:
@@ -228,7 +231,7 @@ async def confai(message: types.Message):
         finally:
             return
 
-    if utils.init_dict.keys() != chat_config.keys():
+    if config.chat_config_template.keys() != chat_config.keys():
         await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
                             "(это могло произойти после обновления бота или повреждения данных в БД).\n"
                             "Требуется сбросить настройки чата командой /confai reset.")
@@ -267,7 +270,8 @@ async def template_(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
+            dialogs.update({message.chat.id:
+                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -369,7 +373,7 @@ async def template_button(callback: types.CallbackQuery):
             await message.edit_text(f"Шаблон {template_name} не найден в БД!")
             return
         new_config = json.loads(template[0][2])
-        if new_config.keys() != utils.init_dict.keys():
+        if new_config.keys() != config.chat_config_template.keys():
             await message.edit_text(f"Шаблон {template_name} устарел или повреждён (ключи не совпадают с "
                                     f"конфигурацией по умолчанию). Требуется удалить или перезаписать шаблон.")
             return
@@ -381,7 +385,8 @@ async def template_button(callback: types.CallbackQuery):
                                     f"в параметрах: {e} Требуется удалить или перезаписать шаблон.")
             return
         if dialogs.get(message.chat.id) is None:
-            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
+            dialogs.update({message.chat.id:
+                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
         dialogs.get(message.chat.id).set_chat_config(sql_helper, new_config, message.chat.id)
         await message.edit_text(f"Шаблон {template_name} успешно применён для данного чата.")
     except Exception as e:
@@ -415,7 +420,8 @@ async def handler(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
+            dialogs.update({message.chat.id:
+                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -424,7 +430,7 @@ async def handler(message: types.Message):
     chat_config = dialogs.get(message.chat.id).chat_config
     broken_params = []
     for key, value in chat_config.items():
-        if key in utils.mandatory_params and value is None:
+        if key in utils.MANDATORY_PARAMS and value is None:
             broken_params.append(key.replace("_", "-"))
     if broken_params:
         await message.reply("Для чата не заполнены следующие параметры: "
@@ -481,7 +487,7 @@ async def handler(message: types.Message):
 async def version_(message: types.Message):
     if await utils.check_whitelist(message, config):
         await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 08.05.2025\n'
+                            'Дата сборки: 09.05.2025\n'
                             'Created by Allnorm aka DvadCat')
 
 

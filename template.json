@@ -1,0 +1,21 @@
+{
+    "api_key": null,
+    "system_prompt": null,
+    "model": null,
+    "vendor": "openai",
+    "base_url": null,
+    "vision": false,
+    "stream_mode": false,
+    "temperature": 0.5,
+    "attempts": 7,
+    "threads_limit": 10,
+    "markdown_enable": true,
+    "split_paragraphs": false,
+    "reply_to_quotes": true,
+    "show_used_tokens": true,
+    "allow_config_everyone": false,
+    "max_answer_len": 2000,
+    "summarizer_limit": 6000,
+    "summariser_prompt": "Create a short summary of the text previously discussed with the user.",
+    "prefill_prompt": null
+}
