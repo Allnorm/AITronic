@@ -1,3 +1,4 @@
+import aiogram.exceptions
 import asyncio
 import json
 import logging
@@ -11,12 +12,13 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import ai_core
 import sql_worker
 import utils
+from utils import IncorrectConfig
 
 config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.4.1 beta'
+version = '0.5 beta'
 
 dialogs = {}
 
@@ -133,23 +135,35 @@ async def confai(message: types.Message):
     if private_messages and not config_mode:
         chat_name = "личных сообщений"
     else:
-        chat_name = "чата " + (await bot.get_chat(msg_chat_id)).title
+        try:
+            chat_name = "чата " + (await bot.get_chat(msg_chat_id)).title
+        except aiogram.exceptions.TelegramForbiddenError:
+            await message.reply(f'Ошибка получения имени чата - бот был заблокирован в данном чате.')
+            return
 
     if param_name is None:
         answer = (f"Здесь вы можете проверить ваши настройки для {utils.html_fix(chat_name)}, "
                   f"чтобы начать работу с выбранной LLM:\n"
                   f"{utils.get_current_params(chat_config, private_messages)}\n"
                   f"Подробная информация по настройке - в команде /help")
+        keyboard_list = []
+        for key, value in chat_config.items():
+            if isinstance(value, bool):
+                param_status = '✅' if value else '❌'
+                button = InlineKeyboardButton(text=f'{param_status} {key.replace("_", "-")}',
+                                              callback_data=f'cai_{msg_chat_id}_{key.replace("_", "-")}_{value}')
+                keyboard_list.append([button])
         try:
-            await message.reply(answer, parse_mode='html', disable_web_page_preview=True)
+            await message.reply(answer, parse_mode='html', disable_web_page_preview=True,
+                                reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_list))
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка выполнения команды: {e}")
         return
 
     admin_statuses = ('administrator', 'creator')
-    if not any([private_messages,
-                (await bot.get_chat_member(message.chat.id, message.from_user.id)).status in admin_statuses,
+    if not any([private_messages and not config_mode,
+                (await bot.get_chat_member(msg_chat_id, message.from_user.id)).status in admin_statuses,
                 chat_config.get('allow_config_everyone')]):
         await message.reply("Не-администраторам чата запрещено использовать эту команду с аргументами!")
         return
@@ -172,8 +186,7 @@ async def confai(message: types.Message):
                 except exceptions.TelegramBadRequest as e:
                     logging.error(traceback.format_exc())
                     await message.reply(f"Ошибка выполнения команды: {e}")
-                finally:
-                    return
+                return
         config.config_mode_timer.update({message.from_user.id: int(time.time())})
         config.config_mode_chats.update({message.from_user.id: msg_chat_id})
         await message.reply(f"Вы успешно запустили режим конфигурации для {chat_name}. "
@@ -229,8 +242,7 @@ async def confai(message: types.Message):
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка выполнения команды: {e}")
-        finally:
-            return
+        return
 
     if config.chat_config_template.keys() != chat_config.keys():
         await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
@@ -351,7 +363,7 @@ async def template_(message: types.Message):
                 return
             for template in current_templates:
                 button = InlineKeyboardButton(text=template[1],
-                                              callback_data=f't_{command}_{template[0]}_{template[1]}')
+                                              callback_data=f't_{command}_{template[1]}')
                 keyboard_list.append([button])
             await message.reply(f"Выберите шаблон для {command_text}:",
                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_list))
@@ -368,7 +380,7 @@ async def template_button(callback: types.CallbackQuery):
 
     message = callback.message
     try:
-        template_name = callback.data.split('_')[3]
+        template_name = callback.data.split('_', maxsplit=2)[2]
         template = sql_helper.get_templates(callback.message.chat.id, template_name)
         if not template:
             await message.edit_text(f"Шаблон {template_name} не найден в БД!")
@@ -401,7 +413,7 @@ async def template_button(callback: types.CallbackQuery):
 
     message = callback.message
     try:
-        template_name = callback.data.split('_')[3]
+        template_name = callback.data.split('_', maxsplit=2)[2]
         template = sql_helper.get_templates(callback.message.chat.id, template_name)
         if not template:
             await message.edit_text(f"Шаблон {template_name} не найден в БД!")
@@ -412,6 +424,109 @@ async def template_button(callback: types.CallbackQuery):
         logging.error(traceback.format_exc())
         await message.edit_text(f"Ошибка в работе бота: {e}")
         return
+
+
+@dp.callback_query(lambda call: call.data[:len('cai')] == 'cai')
+async def confai_bool(callback: types.CallbackQuery):
+
+    message = callback.message
+    reply_markup = message.reply_markup
+    button_data = callback.data.split('_')
+    button_chat_id = button_data[1]
+    button_param_name = button_data[2].replace('-', '_')
+    button_param_value = button_data[3]
+
+    private_messages = message.chat.id == callback.from_user.id
+    if (config.config_mode_timer.get(callback.from_user.id) and
+            config.config_mode_timer.get(callback.from_user.id) + 300 < int(time.time())):
+        config.config_mode_timer.pop(callback.from_user.id)
+        config.config_mode_chats.pop(callback.from_user.id)
+
+    msg_chat_id = config.config_mode_chats.get(callback.from_user.id)
+    if button_chat_id != str(msg_chat_id):
+        if button_chat_id == str(message.chat.id) and private_messages:
+            msg_chat_id = message.chat.id
+        elif msg_chat_id:
+            await bot.answer_callback_query(callback.id, "Вы уже настраиваете другой чат!")
+            return
+        else:
+            await bot.answer_callback_query(callback.id, "Вы не находитесь в режиме конфигурации чата!")
+            return
+
+    if dialogs.get(msg_chat_id) is None:
+        try:
+            dialogs.update({msg_chat_id: ai_core.Dialog(msg_chat_id, config,
+                                                           sql_helper, config.chat_config_template)})
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            await message.reply(f"Ошибка в работе бота: {e}")
+            return
+
+    chat_config = dialogs.get(msg_chat_id).chat_config
+
+    if not any([private_messages and button_chat_id == str(message.chat.id),
+                (await bot.get_chat_member(msg_chat_id, callback.from_user.id)).status
+                in ('administrator', 'creator'),
+                chat_config.get('allow_config_everyone')]):
+        await bot.answer_callback_query(callback.id, "Вы не являетесь администратором чата!")
+        return
+
+    if private_messages and button_chat_id == str(message.chat.id):
+        chat_name = "личных сообщений"
+    else:
+        try:
+            chat_name = (await bot.get_chat(msg_chat_id)).title
+        except aiogram.exceptions.TelegramForbiddenError:
+            await bot.answer_callback_query(
+                callback.id, f'Ошибка получения имени чата - бот был заблокирован в настраиваемом чате.',
+            show_alert=True)
+            return
+
+    if config.chat_config_template.get(button_param_name) is None:
+        await bot.answer_callback_query(
+            callback.id, f'Параметр "{button_param_name.replace("_", "-")}" не найден в списке '
+                         f'доступных параметров!', show_alert=True)
+        return
+
+    try:
+        button_param_value = utils.config_validator(button_param_name, button_param_value)[button_param_name]
+    except IncorrectConfig as e:
+        await bot.answer_callback_query(
+            callback.id, f'Некорректное значение параметра '
+                         f'{button_param_name.replace("_", "-")}: {e}', show_alert=True)
+        return
+
+    if chat_config.get(button_param_name) != button_param_value:
+        await bot.answer_callback_query(
+            callback.id, f'Параметр {button_param_name.replace("_", "-")} для {chat_name} уже '
+                         f'имеет значение {not button_param_value}.', show_alert=True)
+    else:
+        button_param_value = not button_param_value
+        chat_config.update({button_param_name: button_param_value})
+        try:
+            dialogs.get(msg_chat_id).set_chat_config(sql_helper, chat_config, msg_chat_id, button_param_name)
+            await bot.answer_callback_query(
+                callback.id, f'Значение параметра {button_param_name.replace("_", "-")} '
+                             f'для {chat_name} установлено на {button_param_value}.', show_alert=True)
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            await message.reply(f"Ошибка в работе бота: {e}")
+            return
+
+
+    for list_ in reply_markup.inline_keyboard:
+        for button in list_:
+            if button.callback_data == callback.data:
+                button.callback_data = (f'cai_{button_chat_id}_{button_param_name.replace("_", "-")}'
+                                        f'_{button_param_value}')
+                if '❌' in button.text:
+                    button.text = button.text.replace('❌', '✅')
+                else:
+                    button.text = button.text.replace('✅', '❌')
+    await bot.edit_message_reply_markup(chat_id=message.chat.id,
+                                        message_id=message.message_id,
+                                        reply_markup=reply_markup)
+
 
 @dp.message(lambda message: utils.check_names(message, config))
 async def handler(message: types.Message):

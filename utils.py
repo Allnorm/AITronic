@@ -208,7 +208,7 @@ def extract_arg(text, num):
     except (IndexError, AttributeError):
         return None
 
-def config_validator(name, value):
+def config_validator(name, value) -> dict:
     name_replace = name.replace('_', '-')
     if name == 'vendor':
         if value not in ('openai', 'anthropic'):
