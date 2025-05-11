@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.0'
+version = '1.0.1'
 
 dialogs = {}
 
@@ -563,10 +563,9 @@ async def inline_button(callback: types.CallbackQuery):
     user_id = callback.from_user.id
 
     if config.whitelist and str(user_id) not in config.whitelist:
-        await utils.edit_inline_message('', f"❗Текст сообщения не найден в оперативной памяти бота.",
+        await utils.edit_inline_message('', f"❗Ваш User ID не найден в вайтлисте бота. "
+                                            f"Вы не можете его использовать.",
                                         inline_message_id, config.full_debug, bot, 'markdown')
-        await bot.edit_message_text("Ваш User ID не найден в вайтлисте бота. Вы не можете его использовать",
-                                    inline_message_id=inline_message_id)
         return
 
     msg_txt = inline_worker.get(callback.data.split('_', maxsplit=1)[1])
