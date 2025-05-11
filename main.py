@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.0.1'
+version = '1.0.2'
 
 dialogs = {}
 
@@ -693,7 +693,7 @@ async def inline(inline_query: types.inline_query.InlineQuery):
     if config.whitelist and str(inline_query.from_user.id) not in config.whitelist:
         n_w_text = 'Ваш User ID не найден в вайтлисте бота.'
         query_result = InlineQueryResultArticle(
-            id="not_whitelisted",
+            id=str(inline_query.from_user.id),
             title=n_w_text,
             input_message_content=InputTextMessageContent(
                 message_text=f'_❗{n_w_text} Вы не можете его использовать._',
