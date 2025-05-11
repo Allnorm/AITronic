@@ -192,14 +192,13 @@ class Dialog:
 
     async def send_api_request(self, messages):
         attempts = self.__chat_config.get('attempts')
+        if self.__chat_config.get('vendor') == 'anthropic':
+            func = self.send_api_request_anthropic
+        else:
+            func = self.send_api_request_openai
         for attempt in range(attempts):
             try:
-                if self.__chat_config.get('vendor') == 'anthropic':
-                    return await asyncio.get_running_loop().run_in_executor(
-                        None, self.send_api_request_anthropic, messages)
-                else:
-                    return await asyncio.get_running_loop().run_in_executor(
-                        None, self.send_api_request_openai, messages)
+                return await asyncio.get_running_loop().run_in_executor(None, func, messages)
             except ApiRequestException as e:
                 if attempt + 1 == attempts:
                     raise e
@@ -283,6 +282,52 @@ class Dialog:
             logging.error(f"{e}\n{traceback.format_exc()}")
             message.reply(f"Ошибка записи ответа нейросети в БД: {e}.\n"
                           f"Контекст разговора будет утрачен после перезапуска бота!")
+        self.threads_semaphore.release()
+        if self.threads_semaphore._value >= self.__chat_config.get('threads_limit') and self.summarizer_used:
+            self.summarizer_used = False
+        return answer
+
+    async def get_answer_inline(self, username, msg_txt):
+        await self.threads_semaphore.acquire()
+        chat_name = f"{username}'s private messages"
+
+        main_text = f"Message ({username}): {msg_txt}"
+        dialog_buffer = self.dialog_history.copy()
+        dialog_buffer.append({"role": "user", "content": main_text})
+        try:
+            answer, total_tokens, input_tokens, output_tokens = await self.send_api_request(dialog_buffer)
+            if self.global_config.full_debug:
+                logging.info(f"--FULL DEBUG INFO FOR API REQUEST--\n\n{self.system_prompt}\n\n{dialog_buffer}"
+                             f"\n\n{answer}\n\n--END OF FULL DEBUG INFO FOR API REQUEST--")
+        except ApiRequestException as e:
+            self.threads_semaphore.release()
+            if self.global_config.full_debug:
+                logging.info(f"--FULL DEBUG INFO FOR API REQUEST--\n\n{self.system_prompt}\n\n{dialog_buffer}"
+                             f"\n\n--END OF FULL DEBUG INFO FOR API REQUEST--")
+            raise ApiRequestException(f"Ошибка запроса к LLM: {e}")
+
+        logging.info(f'{total_tokens} tokens counted by the OpenAI API in {chat_name}.')
+        self.dialog_history.extend([{"role": "user", "content": main_text},
+                                    {"role": "assistant", "content": answer}])
+        if self.__chat_config.get('vision') and len(self.dialog_history) > 10:
+            self.dialog_history = self.cleaning_images(self.dialog_history, last_only=True)
+        if total_tokens >= self.__chat_config.get('summarizer_limit') and not self.summarizer_used:
+            logging.info(f"The token limit {self.__chat_config.get('summarizer_limit')} for "
+                         f"the {chat_name} has been exceeded. Using a lazy summarizer")
+            try:
+                await self.summarizer(chat_name)
+            except ApiRequestException:
+                pass
+
+        if self.__chat_config.get('show_used_tokens'):
+            answer = utils.token_counter_formatter(answer, total_tokens, input_tokens, output_tokens)
+        try:
+            self.sql_helper.dialog_update(self.dialog_history, self.chat_id)
+        except Exception as e:
+            logging.error("AITronic was unable to save conversation information! Please check your database!")
+            logging.error(f"{e}\n{traceback.format_exc()}")
+            pass
+
         self.threads_semaphore.release()
         if self.threads_semaphore._value >= self.__chat_config.get('threads_limit') and self.summarizer_used:
             self.summarizer_used = False

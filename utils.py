@@ -1,3 +1,4 @@
+import asyncio
 import configparser
 import json
 import logging
@@ -10,7 +11,6 @@ from importlib import reload
 from typing import Optional
 
 from aiogram import types, exceptions
-
 
 CHAT_CONFIG_TEMPLATE = {
     'api_key': None,
@@ -75,6 +75,7 @@ class ConfigData:
                 self.whitelist = config["Bot"]["whitelist-chats"]
                 self.tag_phrase = config["Bot"]["tag-phrase"]
                 self.full_debug = self.bool_init(config["Bot"]["full-debug"])
+                self.disable_confai = self.bool_init(config["Bot"]["disable-confai"])
                 if self.bool_init(config["Bot"]["use-json-template"]):
                     self.json_template_init()
                 break
@@ -105,6 +106,7 @@ class ConfigData:
         config.set("Bot", "tag-phrase", "gpt")
         config.set("Bot", "full-debug", "false")
         config.set("Bot", "use-json-template", "true")
+        config.set("Bot", "disable-confai", "false")
         try:
             config.write(open("config.ini", "w"))
             print("New config file was created successful")
@@ -147,6 +149,25 @@ class ConfigData:
         self.chat_config_template = json_template
         logging.info('The JSON settings template has been successfully loaded.')
 
+
+class InlineWorker:
+
+    __inlines_dict = {}
+
+    async def auto_remove_old(self):
+        while True:
+            for key, value in self.__inlines_dict.copy().items():
+                if value[0] + 86400 < int(time.time()):
+                    self.__inlines_dict.pop(key)
+            await asyncio.sleep(3600)
+
+    def add(self, unique_id, text):
+        self.__inlines_dict.update({unique_id: [int(time.time()), text]})
+
+    def get(self, unique_id):
+        if self.__inlines_dict.get(unique_id):
+            return self.__inlines_dict.get(unique_id)[1]
+        return None
 
 def username_parser(message, html=False):
     if message.from_user.first_name == "":
@@ -347,14 +368,34 @@ async def send_message(message, bot, text, parse=None, reply=False):
             await message.reply(text, allow_sending_without_reply=True, parse_mode=parse)
         else:
             await bot.send_message(message.chat.id, text, thread_id, parse_mode=parse)
-    except exceptions.TelegramBadRequest as exc:
-        if "can't parse entities" in str(exc):
+    except exceptions.TelegramBadRequest as e:
+        if "can't parse entities" in str(e):
             logging.warning("Telegram could not parse markdown in message, it will be sent without formatting")
             await send_message(message, bot, text, reply=reply)
-        elif "text must be non-empty" in str(exc) or 'message text is empty' in str(exc):
+        elif "text must be non-empty" in str(e) or 'message text is empty' in str(e):
             logging.warning(f"Failed to send empty message in chat! Message content: {text}")
         else:
             logging.error(traceback.format_exc())
+
+
+async def edit_inline_message(old_txt, service_txt, inline_message_id, full_debug,
+                              bot, parse_mode=None, new_txt=''):
+    if parse_mode:
+        service_txt = f'_{service_txt}_'
+    if new_txt:
+        new_txt = f'\n{new_txt}'
+    try:
+        await bot.edit_message_text(f"{old_txt}\n\n{service_txt}{new_txt}",
+                                    inline_message_id=inline_message_id, parse_mode=parse_mode)
+    except Exception as e:
+        if "can't parse entities" in str(e):
+            await edit_inline_message(old_txt, service_txt.replace('_', ""), inline_message_id,
+                                      full_debug, bot, None, new_txt)
+        else:
+            logging.error(f'Error sending inline message: {e}')
+            if full_debug:
+                logging.error(traceback.format_exc())
+            return
 
 
 def token_counter_formatter(answer, total_tokens, input_tokens, output_tokens):
@@ -401,3 +442,18 @@ def get_current_params(chat_config, accept_show_privates=False):
                "то он является непубличным. Значение непубличных параметров можно посмотреть в "
                "режиме настройки чата в ЛС с ботом с помощью команды /confai.")
     return answer
+
+def formatted_timer(timer_in_second):
+    if timer_in_second <= 0:
+        return "0c."
+    elif timer_in_second < 60:
+        return time.strftime("%Sс.", time.gmtime(timer_in_second))
+    elif timer_in_second < 3600:
+        return time.strftime("%Mм. и %Sс.", time.gmtime(timer_in_second))
+    elif timer_in_second < 86400:
+        return time.strftime("%Hч., %Mм. и %Sс.", time.gmtime(timer_in_second))
+    else:
+        days = timer_in_second // 86400
+        timer_in_second = timer_in_second - days * 86400
+        return str(days) + " дн., " + time.strftime("%Hч., %Mм. и %Sс.", time.gmtime(timer_in_second))
+    # return datetime.datetime.fromtimestamp(timer_in_second).strftime("%d.%m.%Y в %H:%M:%S")
