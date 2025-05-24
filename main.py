@@ -1,3 +1,5 @@
+import uuid
+
 import aiogram.exceptions
 import asyncio
 import json
@@ -7,7 +9,8 @@ import traceback
 
 from aiogram import types, Bot, Dispatcher, exceptions
 from aiogram.filters.command import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import ai_core
 import sql_worker
@@ -18,7 +21,8 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.5.1 beta'
+inline_worker = utils.InlineWorker()
+version = '1.0.2'
 
 dialogs = {}
 
@@ -98,6 +102,9 @@ async def help_(message: types.Message):
 @dp.message(Command("confai"))
 async def confai(message: types.Message):
 
+    if config.disable_confai:
+        return
+
     private_messages = message.chat.id == message.from_user.id
     if (config.config_mode_timer.get(message.from_user.id) and
             config.config_mode_timer.get(message.from_user.id) + 300 < int(time.time())):
@@ -146,16 +153,21 @@ async def confai(message: types.Message):
                   f"чтобы начать работу с выбранной LLM:\n"
                   f"{utils.get_current_params(chat_config, private_messages)}\n"
                   f"Подробная информация по настройке - в команде /help")
+        if config_mode and (chat_matches or private_messages):
+            exit_timer = utils.formatted_timer(
+                config.config_mode_timer.get(message.from_user.id) + 300 - int(time.time()))
+            answer += f"\n\n⏳ До выхода из режима конфигурации осталось {exit_timer}"
+
         keyboard_list = []
         for key, value in chat_config.items():
             if isinstance(value, bool):
                 param_status = '✅' if value else '❌'
                 button = InlineKeyboardButton(text=f'{param_status} {key.replace("_", "-")}',
                                               callback_data=f'cai_{msg_chat_id}_{key.replace("_", "-")}_{value}')
-                keyboard_list.append([button])
+                keyboard_list.append(button)
         try:
             await message.reply(answer, parse_mode='html', disable_web_page_preview=True,
-                                reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_list))
+                                reply_markup=InlineKeyboardBuilder().row(*keyboard_list, width=2).as_markup())
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка выполнения команды: {e}")
@@ -217,6 +229,11 @@ async def confai(message: types.Message):
             await message.reply(f"Настраивать приватные параметры разрешено только в ЛС бота.")
             return
 
+    timer_text = ''
+    if config_mode:
+        exit_timer = utils.formatted_timer(config.config_mode_timer.get(message.from_user.id) + 300 - int(time.time()))
+        timer_text = f"\n\n⏳ До выхода из режима конфигурации осталось {exit_timer}"
+
     if param_name == 'reset':
         reset_param_name = utils.extract_arg(message.text, 2)
         if reset_param_name:
@@ -224,13 +241,13 @@ async def confai(message: types.Message):
                 if config.chat_config_template.keys() != chat_config.keys():
                     await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
                                         "(это могло произойти после обновления бота или повреждения данных в БД).\n"
-                                        "Требуется сбросить настройки чата командой /confai reset.")
+                                        f"Требуется сбросить настройки чата командой /confai reset.{timer_text}")
                     return
                 chat_config.update({reset_param_name.replace("-", "_"):
                                         config.chat_config_template.get(reset_param_name.replace("-", "_"))})
                 reset_param_name = f"параметра {reset_param_name} "
             else:
-                await message.reply(f"Параметр {reset_param_name} не найден в списке параметров.")
+                await message.reply(f"Параметр {reset_param_name} не найден в списке параметров.{timer_text}")
         else:
             chat_config = config.chat_config_template
             reset_param_name = ""
@@ -238,47 +255,47 @@ async def confai(message: types.Message):
         try:
             dialogs.get(msg_chat_id).set_chat_config(sql_helper, chat_config,
                                                      msg_chat_id, reset_param_name.replace('-', "_"))
-            await message.reply(f'Настройки {reset_param_name}для {chat_name} успешно сброшены!')
+            await message.reply(f'Настройки {reset_param_name}для {chat_name} успешно сброшены!{timer_text}')
         except Exception as e:
             logging.error(traceback.format_exc())
-            await message.reply(f"Ошибка выполнения команды: {e}")
+            await message.reply(f"Ошибка выполнения команды: {e}{timer_text}")
         return
 
     if config.chat_config_template.keys() != chat_config.keys():
         await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
                             "(это могло произойти после обновления бота или повреждения данных в БД).\n"
-                            "Требуется сбросить настройки чата командой /confai reset.")
+                            f"Требуется сбросить настройки чата командой /confai reset.{timer_text}")
         return
 
     if param_name.replace("-", "_") not in chat_config:
-        await message.reply(f"Данный параметр не найден в списке настраиваемых параметров.")
+        await message.reply(f"Данный параметр не найден в списке настраиваемых параметров.{timer_text}")
         return
 
     try:
         param_value = message.text.split(" ", maxsplit=2)[2]
     except IndexError:
-        await message.reply(f'Значение аргумента "{param_name}" пустое!')
+        await message.reply(f'Значение аргумента "{param_name}" пустое!{timer_text}')
         return
 
     try:
         chat_config.update(utils.config_validator(param_name.replace("-", "_"), param_value))
     except utils.IncorrectConfig as e:
-        await message.reply(f'Некорректный аргумент: {e}')
+        await message.reply(f'Некорректный аргумент: {e}{timer_text}')
         return
 
     try:
         dialogs.get(msg_chat_id).set_chat_config(sql_helper, chat_config, msg_chat_id, param_name.replace("-", "_"))
-        await message.reply(f'Успешно обновлён параметр {param_name} для {chat_name}')
+        await message.reply(f'Успешно обновлён параметр {param_name} для {chat_name}{timer_text}')
     except Exception as e:
         logging.error(traceback.format_exc())
-        await message.reply(f"Ошибка выполнения команды: {e}")
+        await message.reply(f"Ошибка выполнения команды: {e}{timer_text}")
         return
 
 
 @dp.message(Command("template"))
 async def template_(message: types.Message):
 
-    if not await utils.check_whitelist(message, config):
+    if config.disable_confai or not await utils.check_whitelist(message, config):
         return
 
     if dialogs.get(message.chat.id) is None:
@@ -378,6 +395,10 @@ async def template_(message: types.Message):
 @dp.callback_query(lambda call: call.data[:len('t_load')] == 't_load')
 async def template_button(callback: types.CallbackQuery):
 
+    if config.disable_confai:
+        await bot.answer_callback_query(callback.id, "Механизм ConfAI отключен на уровне бота!")
+        return
+
     message = callback.message
     try:
         template_name = callback.data.split('_', maxsplit=2)[2]
@@ -411,6 +432,10 @@ async def template_button(callback: types.CallbackQuery):
 @dp.callback_query(lambda call: call.data[:len('t_remove')] == 't_remove')
 async def template_button(callback: types.CallbackQuery):
 
+    if config.disable_confai:
+        await bot.answer_callback_query(callback.id, "Механизм ConfAI отключен на уровне бота!")
+        return
+
     message = callback.message
     try:
         template_name = callback.data.split('_', maxsplit=2)[2]
@@ -428,6 +453,10 @@ async def template_button(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda call: call.data[:len('cai')] == 'cai')
 async def confai_bool(callback: types.CallbackQuery):
+
+    if config.disable_confai:
+        await bot.answer_callback_query(callback.id, "Механизм ConfAI отключен на уровне бота!")
+        return
 
     message = callback.message
     reply_markup = message.reply_markup
@@ -527,6 +556,65 @@ async def confai_bool(callback: types.CallbackQuery):
                                         message_id=message.message_id,
                                         reply_markup=reply_markup)
 
+@dp.callback_query(lambda call: call.data[:len('inline')] == 'inline')
+async def inline_button(callback: types.CallbackQuery):
+
+    inline_message_id = callback.inline_message_id
+    user_id = callback.from_user.id
+
+    if config.whitelist and str(user_id) not in config.whitelist:
+        await utils.edit_inline_message('', f"❗Ваш User ID не найден в вайтлисте бота. "
+                                            f"Вы не можете его использовать.",
+                                        inline_message_id, config.full_debug, bot, 'markdown')
+        return
+
+    msg_txt = inline_worker.get(callback.data.split('_', maxsplit=1)[1])
+    if not msg_txt:
+        await utils.edit_inline_message('', f"❗Текст сообщения не найден в оперативной памяти бота.",
+                                        inline_message_id, config.full_debug, bot, 'markdown')
+        return
+
+    username = callback.from_user.first_name
+    if callback.from_user.last_name:
+        username += f' {callback.from_user.last_name}'
+
+    if dialogs.get(user_id) is None:
+        try:
+            dialogs.update({user_id: ai_core.Dialog(user_id, config, sql_helper, config.chat_config_template)})
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            await utils.edit_inline_message(msg_txt, f"❗Ошибка в работе бота: {e}", inline_message_id,
+                                            config.full_debug, bot, 'markdown')
+            return
+
+    chat_config = dialogs.get(user_id).chat_config
+    broken_params = []
+    for key, value in chat_config.items():
+        if key in utils.MANDATORY_PARAMS and value is None:
+            broken_params.append(key.replace("_", "-"))
+    if broken_params:
+        service_txt = ("❗ В личных сообщениях бота не заполнены следующие параметры: "
+                       + ", ".join(broken_params) + ". Бот не будет работать.")
+        await utils.edit_inline_message(msg_txt, service_txt, inline_message_id,
+                                        config.full_debug, bot, 'markdown')
+        return
+
+    parse_mode = 'markdown' if chat_config.get('markdown_enable') else None
+
+    logging.info(f"User {username} send an inline request to LLM")
+    await utils.edit_inline_message(msg_txt, f'⌛ Генерация ответа...', inline_message_id,
+                                    config.full_debug, bot, parse_mode)
+
+    try:
+        answer = await dialogs.get(user_id).get_answer_inline(username, msg_txt)
+    except ai_core.ApiRequestException as e:
+        await utils.edit_inline_message(msg_txt, f'❌ Ошибка в работе бота: {e}', inline_message_id,
+                                        config.full_debug, bot, parse_mode)
+        return
+
+    await utils.edit_inline_message(msg_txt, 'Ответ:', inline_message_id,
+                                    config.full_debug, bot, parse_mode, answer)
+
 
 @dp.message(lambda message: utils.check_names(message, config))
 async def handler(message: types.Message):
@@ -583,7 +671,7 @@ async def handler(message: types.Message):
     reply_msg = {"name": utils.username_parser(message.reply_to_message),
                  "text": reply_msg_text} if reply_msg_text else None
 
-    logging.info(f"User {utils.username_parser(message)} send a request to ChatGPT")
+    logging.info(f"User {utils.username_parser(message)} send a request to LLM")
     parse_mode = 'markdown' if chat_config.get('markdown_enable') else None
     await bot.send_chat_action(chat_id=message.chat.id, action='typing')
     try:
@@ -599,11 +687,52 @@ async def handler(message: types.Message):
         await utils.send_message(message, bot, paragraph, parse=parse_mode)
 
 
+@dp.inline_query(lambda inline_query: inline_query.query != '')
+async def inline(inline_query: types.inline_query.InlineQuery):
+    unique_id = ''
+    if config.whitelist and str(inline_query.from_user.id) not in config.whitelist:
+        n_w_text = 'Ваш User ID не найден в вайтлисте бота.'
+        query_result = InlineQueryResultArticle(
+            id=str(inline_query.from_user.id),
+            title=n_w_text,
+            input_message_content=InputTextMessageContent(
+                message_text=f'_❗{n_w_text} Вы не можете его использовать._',
+                parse_mode='markdown'),
+            description=n_w_text
+        )
+    elif len(inline_query.query) == 255:
+        query_result = InlineQueryResultArticle(
+            id="msg_too_long",
+            title="Сообщение слишком длинное",
+            input_message_content=InputTextMessageContent(
+                message_text=f'_❗ Сообщение слишком длинное (≥255 символов).\n'
+                             f'При отправке в чат оно бы обрезалось._',
+                parse_mode='markdown'
+            ),
+            description="Длина сообщения больше 255 символов"
+        )
+    else:
+        unique_id = str(uuid.uuid4())
+        query_result = InlineQueryResultArticle(
+            id=unique_id,
+            title='Спросить нейросеть',
+            input_message_content=InputTextMessageContent(message_text=inline_query.query),
+            description=inline_query.query,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text='Сгенерировать ответ',
+                callback_data=f'inline_{unique_id}')]])
+        )
+
+    if unique_id:
+        inline_worker.add(unique_id, inline_query.query)
+    await bot.answer_inline_query(inline_query.id, results=[query_result])
+
+
 @dp.message(Command("version"))
 async def version_(message: types.Message):
     if await utils.check_whitelist(message, config):
         await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 24.05.2025\n'
+                            'Дата сборки: 09.05.2025\n'
                             'Created by Allnorm aka DvadCat')
 
 
@@ -612,6 +741,7 @@ async def main():
     config.my_id = get_me.id
     config.my_username = f"@{get_me.username}"
     logging.info(f"###AITRONIC v{version} LAUNCHED SUCCESSFULLY###")
+    asyncio.create_task(inline_worker.auto_remove_old())
     await dp.start_polling(bot)
 
 
