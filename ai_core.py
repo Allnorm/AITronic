@@ -90,8 +90,8 @@ class Dialog:
             system.extend(messages)
             messages = system
 
-        if self.__chat_config.get('prefill'):
-            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill')})
+        if self.__chat_config.get('prefill_prompt'):
+            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill_prompt')})
 
         completion = 'The "completion" object was not received.'
         try:
@@ -115,8 +115,8 @@ class Dialog:
 
     def send_api_request_anthropic(self, messages):
 
-        if self.__chat_config.get('prefill'):
-            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill')})
+        if self.__chat_config.get('prefill_prompt'):
+            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill_prompt')})
 
         completion = 'The "completion" object was not received.'
         if not self.__chat_config.get('stream'):

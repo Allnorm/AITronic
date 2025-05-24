@@ -18,7 +18,7 @@ config = utils.ConfigData()
 bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
-version = '0.5 beta'
+version = '0.5.1 beta'
 
 dialogs = {}
 
@@ -603,7 +603,7 @@ async def handler(message: types.Message):
 async def version_(message: types.Message):
     if await utils.check_whitelist(message, config):
         await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 09.05.2025\n'
+                            'Дата сборки: 24.05.2025\n'
                             'Created by Allnorm aka DvadCat')
 
 
