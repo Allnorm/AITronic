@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.0.3'
+version = '1.0.4'
 
 dialogs = {}
 
@@ -732,7 +732,7 @@ async def inline(inline_query: types.inline_query.InlineQuery):
 async def version_(message: types.Message):
     if await utils.check_whitelist(message, config):
         await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 09.05.2025\n'
+                            'Дата сборки: 26.05.2025\n'
                             'Created by Allnorm aka DvadCat')
 
 

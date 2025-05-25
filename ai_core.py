@@ -100,7 +100,9 @@ class Dialog:
                 messages=messages,
                 temperature=self.__chat_config.get('temperature'),
                 max_tokens=self.__chat_config.get('max_answer_len'),
-                stream=False)
+                stream=False,
+                timeout=150
+            )
             answer = completion.choices[0].message.content
             if not answer or answer.isspace():
                 raise ApiRequestException("Empty text result!")
@@ -119,16 +121,23 @@ class Dialog:
             messages.append({"role": "assistant", "content": self.__chat_config.get('prefill_prompt')})
 
         completion = 'The "completion" object was not received.'
+
+        kwargs = {
+            'model': self.__chat_config.get('model'),
+            'messages': messages,
+            'system': self.__chat_config.get('system_prompt'),
+            'temperature': self.__chat_config.get('temperature'),
+            'max_tokens': self.__chat_config.get('max_answer_len'),
+            'timeout': 150
+        }
+
+        if self.__chat_config.get('system_prompt'):
+            kwargs.update({'system_prompt': self.__chat_config.get('system_prompt')})
+
         if not self.__chat_config.get('stream'):
+            kwargs.update({'stream': False})
             try:
-                completion = self.client.messages.create(
-                    model=self.__chat_config.get('model'),
-                    messages=messages,
-                    system=self.__chat_config.get('system_prompt'),
-                    temperature=self.__chat_config.get('temperature'),
-                    max_tokens=self.__chat_config.get('max_answer_len'),
-                    stream=False
-                )
+                completion = self.client.messages.create(**kwargs)
                 if "error" in completion.id:
                     logging.error(completion.content[0].text)
                     raise ApiRequestException(completion.content[0].text)
@@ -150,13 +159,7 @@ class Dialog:
             input_count = 0
             output_count = 0
             text = ""
-            with self.client.messages.stream(
-                    model=self.__chat_config.get('model'),
-                    messages=messages,
-                    system=self.__chat_config.get('system_prompt'),
-                    temperature=self.__chat_config.get('temperature'),
-                    max_tokens=self.__chat_config.get('max_answer_len')
-            ) as stream:
+            with self.client.messages.stream(**kwargs) as stream:
                 empty_stream = True
                 error = False
                 for event in stream:
