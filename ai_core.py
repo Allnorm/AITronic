@@ -101,7 +101,7 @@ class Dialog:
                 temperature=self.__chat_config.get('temperature'),
                 max_tokens=self.__chat_config.get('max_answer_len'),
                 stream=False,
-                timeout=150
+                timeout=180
             )
             answer = completion.choices[0].message.content
             if not answer or answer.isspace():
@@ -128,7 +128,7 @@ class Dialog:
             'system': self.__chat_config.get('system_prompt'),
             'temperature': self.__chat_config.get('temperature'),
             'max_tokens': self.__chat_config.get('max_answer_len'),
-            'timeout': 150
+            'timeout': 180
         }
 
         if self.__chat_config.get('system_prompt'):
