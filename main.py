@@ -22,9 +22,10 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.0.4'
+version = '1.1'
 
 dialogs = {}
+chats_queue = {}
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
@@ -673,18 +674,37 @@ async def handler(message: types.Message):
 
     logging.info(f"User {utils.username_parser(message)} send a request to LLM")
     parse_mode = 'markdown' if chat_config.get('markdown_enable') else None
-    await bot.send_chat_action(chat_id=message.chat.id, action='typing')
+
+    try:
+        await bot.send_chat_action(chat_id=message.chat.id, action='typing')
+    except exceptions.TelegramBadRequest as e:
+        logging.error(f'Error sending message to chat {message.chat.id}\n{e}')
+        return
+
     try:
         answer = await dialogs.get(message.chat.id).get_answer(message, reply_msg, photo_base64)
     except ai_core.ApiRequestException as e:
         await message.reply(f"Ошибка в работе бота: {e}")
         return
     answer = utils.answer_parser(answer, chat_config)
+    chat_queue = chats_queue.get(message.chat.id)
+    if not chat_queue:
+        chats_queue.update({message.chat.id: asyncio.Lock()})
+        chat_queue = chats_queue.get(message.chat.id)
+
+    locked = chat_queue.locked()
+    await chat_queue.acquire()
+    if locked:
+        await asyncio.sleep(3)
     await utils.send_message(message, bot, answer[0], parse=parse_mode, reply=True)
     for paragraph in answer[1::]:
-        await bot.send_chat_action(chat_id=message.chat.id, action='typing')
+        try:
+            await bot.send_chat_action(chat_id=message.chat.id, action='typing')
+        except exceptions.TelegramBadRequest:
+            pass
         await asyncio.sleep(3)
         await utils.send_message(message, bot, paragraph, parse=parse_mode)
+    chat_queue.release()
 
 
 @dp.inline_query(lambda inline_query: inline_query.query != '')
@@ -732,7 +752,7 @@ async def inline(inline_query: types.inline_query.InlineQuery):
 async def version_(message: types.Message):
     if await utils.check_whitelist(message, config):
         await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 26.05.2025\n'
+                            'Дата сборки: 08.06.2025\n'
                             'Created by Allnorm aka DvadCat')
 
 
