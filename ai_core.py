@@ -132,7 +132,6 @@ class Dialog:
             try:
                 completion = self.client.messages.create(**kwargs)
                 if "error" in completion.id:
-                    logging.error(completion.content[0].text)
                     raise ApiRequestException(completion.content[0].text)
                 text = completion.content[0].text
                 if not text or text.isspace():
@@ -168,8 +167,7 @@ class Dialog:
                     elif name == "MessageDeltaEvent":
                         output_count += event.usage.output_tokens
                     elif name == "Error":
-                        logging.error(event.error.message)
-                        raise ApiRequestException
+                        raise ApiRequestException(event.error.message)
                 if empty_stream:
                     raise ApiRequestException("Empty stream object, please check your proxy connection!")
                 if error:
