@@ -90,9 +90,6 @@ class Dialog:
             system.extend(messages)
             messages = system
 
-        if self.__chat_config.get('prefill_prompt'):
-            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill_prompt')})
-
         completion = 'The "completion" object was not received.'
         try:
             completion = self.client.chat.completions.create(
@@ -117,22 +114,18 @@ class Dialog:
 
     def send_api_request_anthropic(self, messages):
 
-        if self.__chat_config.get('prefill_prompt'):
-            messages.append({"role": "assistant", "content": self.__chat_config.get('prefill_prompt')})
-
         completion = 'The "completion" object was not received.'
 
         kwargs = {
             'model': self.__chat_config.get('model'),
             'messages': messages,
-            'system': self.__chat_config.get('system_prompt'),
             'temperature': self.__chat_config.get('temperature'),
             'max_tokens': self.__chat_config.get('max_answer_len'),
             'timeout': 180
         }
 
         if self.__chat_config.get('system_prompt'):
-            kwargs.update({'system_prompt': self.__chat_config.get('system_prompt')})
+            kwargs.update({'system': self.__chat_config.get('system_prompt')})
 
         if not self.__chat_config.get('stream'):
             kwargs.update({'stream': False})
@@ -242,10 +235,25 @@ class Dialog:
         main_text = f"Message ({username}): {msg_txt}"
         dialog_buffer = self.dialog_history.copy()
         prompt = f'{reply_msg_text}{main_text}'
+
+        prefill_ass = None
+        prefill_mode = self.__chat_config.get('prefill_mode')
+        prefill_prompt = self.__chat_config.get('prefill_prompt')
+        if prefill_prompt:
+            if prefill_mode == 'assistant':
+                prefill_ass = {"role": "assistant", "content": prefill_prompt}
+            elif prefill_mode == 'pre-user':
+                prompt = f"{prefill_prompt}\n{prompt}"
+            elif prefill_mode == 'post-user':
+                prompt = f"{prompt}\n{prefill_prompt}"
+
         if photo_base64:
             dialog_buffer.append({"role": "user", "content": self.get_image_context(photo_base64, prompt)})
         else:
             dialog_buffer.append({"role": "user", "content": prompt})
+        if prefill_ass:
+            dialog_buffer.append(prefill_ass)
+
         try:
             answer, total_tokens, input_tokens, output_tokens = await self.send_api_request(dialog_buffer)
             if self.global_config.full_debug:

@@ -17,5 +17,6 @@
     "max_answer_len": 2000,
     "summarizer_limit": 6000,
     "summariser_prompt": "Create a short summary of the text previously discussed with the user.",
-    "prefill_prompt": null
+    "prefill_prompt": null,
+    "prefill_mode": "assistant"
 }

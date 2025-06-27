@@ -31,11 +31,12 @@ CHAT_CONFIG_TEMPLATE = {
     'max_answer_len': 2000,
     'summarizer_limit': 12000,
     'summariser_prompt': 'Create a short summary of the text previously discussed with the user.',
-    'prefill_prompt': None
+    'prefill_prompt': None,
+    'prefill_mode': 'assistant'
 }
 
 MANDATORY_PARAMS = ('api_key', 'model')
-PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url')
+PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url', 'prefill_prompt')
 BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'allow_config_everyone',
                'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
 INT_PARAMS = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
@@ -231,9 +232,10 @@ def extract_arg(text, num):
 
 def config_validator(name, value) -> dict:
     name_replace = name.replace('_', '-')
-    if name == 'vendor':
-        if value not in ('openai', 'anthropic'):
-            raise IncorrectConfig('"vendor" может быть только "openai" или "anthropic".')
+    if name == 'vendor' and value not in ('openai', 'anthropic'):
+        raise IncorrectConfig('"vendor" может быть только "openai" или "anthropic".')
+    if name == 'prefill_mode' and value not in ('assistant', 'pre-user', 'post-user'):
+        raise IncorrectConfig('"prefill_mode" может быть только "assistant", "pre-user" или "post-user".')
     elif name in BOOL_PARAMS:
         if isinstance(value, bool):
             pass
