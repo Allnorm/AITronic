@@ -262,7 +262,7 @@ class Dialog:
             if self.global_config.full_debug:
                 logging.info(f"--FULL DEBUG INFO FOR API REQUEST--\n\n{self.system_prompt}\n\n{dialog_buffer}"
                              f"\n\n--END OF FULL DEBUG INFO FOR API REQUEST--")
-            raise ApiRequestException(f"Ошибка запроса к LLM: {e}")
+            raise ApiRequestException(f"ошибка запроса к LLM\n{e}")
 
         logging.info(f'{total_tokens} tokens counted by the OpenAI API in {chat_name}.')
         prompt = f'{reply_msg_text}{main_text}'
@@ -313,7 +313,7 @@ class Dialog:
             if self.global_config.full_debug:
                 logging.info(f"--FULL DEBUG INFO FOR API REQUEST--\n\n{self.system_prompt}\n\n{dialog_buffer}"
                              f"\n\n--END OF FULL DEBUG INFO FOR API REQUEST--")
-            raise ApiRequestException(f"Ошибка запроса к LLM: {e}")
+            raise ApiRequestException(f"ошибка запроса к LLM\n{e}")
         # I think that the length of 3700 characters is the optimal limit for an inline message in Telegram,
         # taking into account the length of the user's request (255 characters maximum)
         # and the token counter under the message.

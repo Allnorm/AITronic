@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.2.1'
+version = '1.2.2'
 
 dialogs = {}
 chats_queue = {}
