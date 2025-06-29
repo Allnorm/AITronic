@@ -207,9 +207,9 @@ class Dialog:
                 {"type": "text", "text": prompt}]
         else:
             return [
-                {"type": "image_url", "image_url":
-                    {"url": f"data:{photo_base64['mime']};base64,{photo_base64['data']}"}},
-                {"type": "text", "text": prompt}]
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": f"data:{photo_base64['mime']};base64,{photo_base64['data']}"}
+            ]
 
     async def get_answer(self, message, reply_msg: Optional[dict], photo_base64):
         await self.threads_semaphore.acquire()
