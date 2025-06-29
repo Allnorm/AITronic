@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.2.2'
+version = '1.3'
 
 dialogs = {}
 chats_queue = {}
@@ -566,13 +566,13 @@ async def inline_button(callback: types.CallbackQuery):
     if config.whitelist and str(user_id) not in config.whitelist:
         await utils.edit_inline_message('', f"❗Ваш User ID не найден в вайтлисте бота. "
                                             f"Вы не можете его использовать.",
-                                        inline_message_id, config.full_debug, bot, 'markdown')
+                                        inline_message_id, config.full_debug, bot, None,'markdown')
         return
 
     msg_txt = inline_worker.get(callback.data.split('_', maxsplit=1)[1])
     if not msg_txt:
         await utils.edit_inline_message('', f"❗Текст сообщения не найден в оперативной памяти бота.",
-                                        inline_message_id, config.full_debug, bot, 'markdown')
+                                        inline_message_id, config.full_debug, bot, None,'markdown')
         return
 
     username = callback.from_user.first_name
@@ -585,7 +585,7 @@ async def inline_button(callback: types.CallbackQuery):
         except Exception as e:
             logging.error(traceback.format_exc())
             await utils.edit_inline_message(msg_txt, f"❗Ошибка в работе бота: {e}", inline_message_id,
-                                            config.full_debug, bot, 'markdown')
+                                            config.full_debug, bot, None, 'markdown')
             return
 
     chat_config = dialogs.get(user_id).chat_config
@@ -597,24 +597,24 @@ async def inline_button(callback: types.CallbackQuery):
         service_txt = ("❗ В личных сообщениях бота не заполнены следующие параметры: "
                        + ", ".join(broken_params) + ". Бот не будет работать.")
         await utils.edit_inline_message(msg_txt, service_txt, inline_message_id,
-                                        config.full_debug, bot, 'markdown')
+                                        config.full_debug, bot, None, 'markdown')
         return
 
     parse_mode = 'markdown' if chat_config.get('markdown_enable') else None
 
     logging.info(f"User {username} send an inline request to LLM")
     await utils.edit_inline_message(msg_txt, f'⌛ Генерация ответа...', inline_message_id,
-                                    config.full_debug, bot, parse_mode)
+                                    config.full_debug, bot, None, parse_mode)
 
     try:
         answer = await dialogs.get(user_id).get_answer_inline(username, msg_txt)
     except ai_core.ApiRequestException as e:
         await utils.edit_inline_message(msg_txt, f'❌ Ошибка в работе бота: {e}', inline_message_id,
-                                        config.full_debug, bot, parse_mode)
+                                        config.full_debug, bot, None, parse_mode)
         return
 
     await utils.edit_inline_message(msg_txt, 'Ответ:', inline_message_id,
-                                    config.full_debug, bot, parse_mode, answer)
+                                    config.full_debug, bot, None, parse_mode, f'\n{answer}')
 
 
 @dp.message(lambda message: utils.check_names(message, config))
@@ -696,14 +696,15 @@ async def handler(message: types.Message):
     await chat_queue.acquire()
     if locked:
         await asyncio.sleep(3)
-    await utils.send_message(message, bot, answer[0], parse=parse_mode, reply=True)
+    await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
+                             parse_mode=parse_mode, reply=True)
     for paragraph in answer[1::]:
         try:
             await bot.send_chat_action(chat_id=message.chat.id, action='typing')
         except exceptions.TelegramBadRequest:
             pass
         await asyncio.sleep(3)
-        await utils.send_message(message, bot, paragraph, parse=parse_mode)
+        await utils.send_message(message, bot, paragraph, chat_config.get('markdown_filter'), parse_mode=parse_mode)
     chat_queue.release()
 
 

@@ -10,6 +10,7 @@
     "attempts": 7,
     "threads_limit": 10,
     "markdown_enable": true,
+    "markdown_filter": true,
     "split_paragraphs": false,
     "reply_to_quotes": true,
     "show_used_tokens": true,

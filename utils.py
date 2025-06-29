@@ -24,6 +24,7 @@ CHAT_CONFIG_TEMPLATE = {
     'attempts': 7,
     'threads_limit': 10,
     'markdown_enable': True,
+    'markdown_filter': True,
     'split_paragraphs': False,
     'reply_to_quotes': True,
     'show_used_tokens': True,
@@ -37,7 +38,7 @@ CHAT_CONFIG_TEMPLATE = {
 
 MANDATORY_PARAMS = ('api_key', 'model')
 PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url', 'prefill_prompt')
-BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'allow_config_everyone',
+BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'markdown_filter', 'allow_config_everyone',
                'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
 INT_PARAMS = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
 
@@ -363,17 +364,19 @@ def answer_parser(text, config) -> list:
     return split_answer
 
 
-async def send_message(message, bot, text, parse=None, reply=False):
+async def send_message(message, bot, text: str, markdown_filter, parse_mode=None, reply=False):
     thread_id = message.message_thread_id if message.is_topic_message else None
+    if markdown_filter and not parse_mode:
+        text = text.replace('*', '').replace('`', '')
     try:
         if reply:
-            await message.reply(text, allow_sending_without_reply=True, parse_mode=parse)
+            await message.reply(text, allow_sending_without_reply=True, parse_mode=parse_mode)
         else:
-            await bot.send_message(message.chat.id, text, thread_id, parse_mode=parse)
+            await bot.send_message(message.chat.id, text, thread_id, parse_mode=parse_mode)
     except exceptions.TelegramBadRequest as e:
         if "can't parse entities" in str(e):
             logging.warning("Telegram could not parse markdown in message, it will be sent without formatting")
-            await send_message(message, bot, text, reply=reply)
+            await send_message(message, bot, text, markdown_filter, parse_mode=None, reply=reply)
         elif "text must be non-empty" in str(e) or 'message text is empty' in str(e):
             logging.warning(f"Failed to send empty message in chat! Message content: {text}")
         else:
@@ -381,11 +384,11 @@ async def send_message(message, bot, text, parse=None, reply=False):
 
 
 async def edit_inline_message(old_txt, service_txt, inline_message_id, full_debug,
-                              bot, parse_mode=None, new_txt=''):
+                              bot, markdown_filter=None, parse_mode=None, new_txt=''):
     if parse_mode:
         service_txt = f'_{service_txt}_'
-    if new_txt:
-        new_txt = f'\n{new_txt}'
+    if new_txt and markdown_filter and not parse_mode:
+        new_txt = new_txt.replace('*', '').replace('`', '')
     try:
         await bot.edit_message_text(f"{old_txt}\n\n{service_txt}{new_txt}",
                                     inline_message_id=inline_message_id, parse_mode=parse_mode)
