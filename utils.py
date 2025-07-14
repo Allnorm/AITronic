@@ -130,10 +130,14 @@ class ConfigData:
         try:
             with open("template.json", "r", encoding='utf-8') as json_file:
                 json_template: dict = json.loads(json_file.read())
+        except FileNotFoundError:
+            logging.error(f'File "template.json" was not found. The default chat settings template will be loaded.')
+            return
         except Exception as e:
             logging.error(f'Error reading file "template.json". '
                           f'The default chat settings template will be loaded.\n{e}')
             logging.error(traceback.format_exc())
+            return
 
         if json_template.keys() != CHAT_CONFIG_TEMPLATE.keys():
             logging.error('The keys in the loaded JSON template do not match the keys in the sample template. '
