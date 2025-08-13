@@ -399,7 +399,7 @@ async def edit_inline_message(old_txt, service_txt, inline_message_id, full_debu
     except Exception as e:
         if "can't parse entities" in str(e):
             await edit_inline_message(old_txt, service_txt.replace('_', ""), inline_message_id,
-                                      full_debug, bot, None, new_txt)
+                                      full_debug, bot, markdown_filter, None, new_txt)
         else:
             logging.error(f'Error sending inline message: {e}')
             if full_debug:
