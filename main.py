@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.3.4'
+version = '1.3.5'
 
 dialogs = {}
 chats_queue = {}
@@ -111,10 +111,11 @@ async def confai(message: types.Message):
                                 config.config_mode_chats.items() if chat_in_config.start_time + 300 > int(time.time())}
 
     config_mode, chat_matches = False, False
-    msg_chat_id = config.config_mode_chats.get(message.from_user.id).chat_id
-    if msg_chat_id:
+    config_mode_chat = config.config_mode_chats.get(message.from_user.id)
+    if config_mode_chat:
+        msg_chat_id = config_mode_chat.chat_id
         config_mode = True
-        if msg_chat_id == message.chat.id:
+        if config_mode_chat.chat_id == message.chat.id:
             chat_matches = True
         elif not private_messages:
             msg_chat_id = message.chat.id
@@ -476,7 +477,8 @@ async def confai_bool(callback: types.CallbackQuery):
             config.config_mode_chats.get(callback.from_user.id).start_time + 300 < int(time.time())):
         config.config_mode_chats.pop(callback.from_user.id)
 
-    msg_chat_id = config.config_mode_chats.get(callback.from_user.id)
+    config_mode_chat = config.config_mode_chats.get(callback.from_user.id)
+    msg_chat_id = config_mode_chat.chat_id if config_mode_chat else None
     if button_chat_id != str(msg_chat_id):
         if button_chat_id == str(message.chat.id) and private_messages:
             msg_chat_id = message.chat.id
