@@ -22,7 +22,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.3.3'
+version = '1.3.4'
 
 dialogs = {}
 chats_queue = {}
@@ -107,13 +107,11 @@ async def confai(message: types.Message):
         return
 
     private_messages = message.chat.id == message.from_user.id
-    if (config.config_mode_timer.get(message.from_user.id) and
-            config.config_mode_timer.get(message.from_user.id) + 300 < int(time.time())):
-        config.config_mode_timer.pop(message.from_user.id)
-        config.config_mode_chats.pop(message.from_user.id)
+    config.config_mode_chats = {user_id: chat_in_config for user_id, chat_in_config in
+                                config.config_mode_chats.items() if chat_in_config.start_time + 300 > int(time.time())}
 
     config_mode, chat_matches = False, False
-    msg_chat_id = config.config_mode_chats.get(message.from_user.id)
+    msg_chat_id = config.config_mode_chats.get(message.from_user.id).chat_id
     if msg_chat_id:
         config_mode = True
         if msg_chat_id == message.chat.id:
@@ -156,7 +154,7 @@ async def confai(message: types.Message):
                   f"Подробная информация по настройке - в команде /help")
         if config_mode and (chat_matches or private_messages):
             exit_timer = utils.formatted_timer(
-                config.config_mode_timer.get(message.from_user.id) + 300 - int(time.time()))
+                config.config_mode_chats.get(message.from_user.id).start_time + 300 - int(time.time()))
             answer += f"\n\n⏳ До выхода из режима конфигурации осталось {exit_timer}"
 
         keyboard_list = []
@@ -186,22 +184,21 @@ async def confai(message: types.Message):
             await message.reply("Использовать эту команду для настройки бота в личных сообщениях не требуется.")
             return
         for key, value in config.config_mode_chats.items():
-            if key == message.from_user.id or value == msg_chat_id:
+            if key == message.from_user.id or value.chat_id == msg_chat_id:
                 try:
                     if key == message.from_user.id:
                         text = (f"Вы уже запустили режим конфигурации для чата "
-                                f"{(await bot.get_chat(value)).title}!")
+                                f"{(await bot.get_chat(value.chat_id)).title}!")
                     else:
-                        username = utils.username_parser_chat_member(await bot.get_chat_member(value, key))
+                        username = utils.username_parser_chat_member(await bot.get_chat_member(value.chat_id, key))
                         text = (f"Пользователь {username} уже запустил режим конфигурации для чата "
-                                f"{(await bot.get_chat(value)).title}! Повторите попытку позже.")
+                                f"{(await bot.get_chat(value.chat_id)).title}! Повторите попытку позже.")
                     await message.reply(text)
                 except exceptions.TelegramBadRequest as e:
                     logging.error(traceback.format_exc())
                     await message.reply(f"Ошибка выполнения команды: {e}")
                 return
-        config.config_mode_timer.update({message.from_user.id: int(time.time())})
-        config.config_mode_chats.update({message.from_user.id: msg_chat_id})
+        config.config_mode_chats.update({message.from_user.id: utils.ConfigModeChat(msg_chat_id, int(time.time()))})
         await message.reply(f"Вы успешно запустили режим конфигурации для {chat_name}. "
                             f"У вас есть 5 минут для настройки параметров LLM.")
         return
@@ -213,7 +210,6 @@ async def confai(message: types.Message):
         elif not (private_messages or chat_matches):
             await message.reply(f"Вы можете выйти из режима конфигурации только в ЛС или в конфигурируемом чате!")
             return
-        config.config_mode_timer.pop(message.from_user.id)
         config.config_mode_chats.pop(message.from_user.id)
         await message.reply(f"Вы успешно вышли из режима конфигурации.")
         return
@@ -232,7 +228,8 @@ async def confai(message: types.Message):
 
     timer_text = ''
     if config_mode:
-        exit_timer = utils.formatted_timer(config.config_mode_timer.get(message.from_user.id) + 300 - int(time.time()))
+        exit_timer = utils.formatted_timer(config.config_mode_chats.get(
+            message.from_user.id).start_time + 300 - int(time.time()))
         timer_text = f"\n\n⏳ До выхода из режима конфигурации осталось {exit_timer}"
 
     if param_name == 'reset':
@@ -393,7 +390,15 @@ async def template_(message: types.Message):
         await message.reply(f"Данный аргумент команды /template не найден!")
 
 
-@dp.callback_query(lambda call: call.data[:len('t_load')] == 't_load')
+@dp.message(Command("version"))
+async def version_(message: types.Message):
+    if await utils.check_whitelist(message, config):
+        await message.reply(f'AITronic, версия {version}\n'
+                            'Дата сборки: 02.10.2025\n'
+                            'Created by Allnorm aka DvadCat')
+
+
+@dp.callback_query(lambda call: call.data.startswith('t_load'))
 async def template_button(callback: types.CallbackQuery):
 
     if config.disable_confai:
@@ -430,7 +435,7 @@ async def template_button(callback: types.CallbackQuery):
         return
 
 
-@dp.callback_query(lambda call: call.data[:len('t_remove')] == 't_remove')
+@dp.callback_query(lambda call: call.data.startswith('t_remove'))
 async def template_button(callback: types.CallbackQuery):
 
     if config.disable_confai:
@@ -452,7 +457,7 @@ async def template_button(callback: types.CallbackQuery):
         return
 
 
-@dp.callback_query(lambda call: call.data[:len('cai')] == 'cai')
+@dp.callback_query(lambda call: call.data.startswith('cai'))
 async def confai_bool(callback: types.CallbackQuery):
 
     if config.disable_confai:
@@ -467,9 +472,8 @@ async def confai_bool(callback: types.CallbackQuery):
     button_param_value = button_data[3]
 
     private_messages = message.chat.id == callback.from_user.id
-    if (config.config_mode_timer.get(callback.from_user.id) and
-            config.config_mode_timer.get(callback.from_user.id) + 300 < int(time.time())):
-        config.config_mode_timer.pop(callback.from_user.id)
+    if (config.config_mode_chats.get(callback.from_user.id) and
+            config.config_mode_chats.get(callback.from_user.id).start_time + 300 < int(time.time())):
         config.config_mode_chats.pop(callback.from_user.id)
 
     msg_chat_id = config.config_mode_chats.get(callback.from_user.id)
@@ -557,7 +561,7 @@ async def confai_bool(callback: types.CallbackQuery):
                                         message_id=message.message_id,
                                         reply_markup=reply_markup)
 
-@dp.callback_query(lambda call: call.data[:len('inline')] == 'inline')
+@dp.callback_query(lambda call: call.data.startswith('inline'))
 async def inline_button(callback: types.CallbackQuery):
 
     inline_message_id = callback.inline_message_id
@@ -747,14 +751,6 @@ async def inline(inline_query: types.inline_query.InlineQuery):
     if unique_id:
         inline_worker.add(unique_id, inline_query.query)
     await bot.answer_inline_query(inline_query.id, results=[query_result])
-
-
-@dp.message(Command("version"))
-async def version_(message: types.Message):
-    if await utils.check_whitelist(message, config):
-        await message.reply(f'AITronic, версия {version}\n'
-                            'Дата сборки: 14.07.2025\n'
-                            'Created by Allnorm aka DvadCat')
 
 
 async def main():

@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 import base64
+from dataclasses import dataclass
 from importlib import reload
 from typing import Optional
 
@@ -47,11 +48,16 @@ class IncorrectConfig(Exception):
     pass
 
 
+@dataclass
+class ConfigModeChat:
+    chat_id: int
+    start_time: int
+
+
 class ConfigData:
     def __init__(self):
 
-        self.config_mode_chats = {}
-        self.config_mode_timer = {}
+        self.config_mode_chats: dict[int, ConfigModeChat] = {}
         self.chat_config_template = CHAT_CONFIG_TEMPLATE
 
         reload(logging)
