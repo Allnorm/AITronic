@@ -382,7 +382,7 @@ async def send_message(message, bot, text: str, markdown_filter, parse_mode=None
         if reply:
             await message.reply(text, allow_sending_without_reply=True, parse_mode=parse_mode)
         else:
-            await bot.send_message(message.chat.id, text, thread_id, parse_mode=parse_mode)
+            await bot.send_message(message.chat.id, text, message_thread_id=thread_id, parse_mode=parse_mode)
     except exceptions.TelegramBadRequest as e:
         if "can't parse entities" in str(e):
             logging.warning("Telegram could not parse markdown in message, it will be sent without formatting")
