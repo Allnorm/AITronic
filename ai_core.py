@@ -127,6 +127,23 @@ class Dialog:
         if self.__chat_config.get('system_prompt'):
             kwargs.update({'system': self.__chat_config.get('system_prompt')})
 
+        # Repackaging the OpenAI API format into an Anthropic API on the fly
+        for message in messages:
+            if isinstance(message['content'], list):
+                mime_type, base64_str, photo_text = '', '', ''
+                for content_part in message['content']:
+                    if content_part['type'] == 'text':
+                        photo_text = content_part['text']
+                    elif content_part['type'] == 'image_url':
+                        mime_type, base64_str = content_part['image_url']['url'].split(";base64,")
+                        mime_type = mime_type.split(":")[1]
+                message.update({
+                    'content': [
+                        {"type": "image", "source":
+                            {"type": "base64", "media_type": mime_type, "data": base64_str}},
+                        {"type": "text", "text": photo_text}]
+                })
+
         if not self.__chat_config.get('stream'):
             kwargs.update({'stream': False})
             try:
@@ -199,17 +216,12 @@ class Dialog:
                 continue
         return None
 
-    def get_image_context(self, photo_base64, prompt):
-        if self.__chat_config.get('vendor') == 'anthropic':
-            return [
-                {"type": "image", "source":
-                    {"type": "base64", "media_type": photo_base64['mime'], "data": photo_base64['data']}},
-                {"type": "text", "text": prompt}]
-        else:
-            return [
-                {"type": "input_text", "text": prompt},
-                {"type": "input_image", "image_url": f"data:{photo_base64['mime']};base64,{photo_base64['data']}"}
-            ]
+    @staticmethod
+    def get_image_context(photo_base64, prompt):
+        return [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{photo_base64['mime']};base64,{photo_base64['data']}"}}
+        ]
 
     async def get_answer(self, message, reply_msg: Optional[dict], photo_base64):
         await self.threads_semaphore.acquire()
