@@ -96,7 +96,7 @@ class Dialog:
                 model=self.__chat_config.get('model'),
                 messages=messages,
                 temperature=self.__chat_config.get('temperature'),
-                max_tokens=self.__chat_config.get('max_answer_len'),
+                max_tokens=self.__chat_config.get('tokens_per_answer'),
                 stream=False,
                 timeout=180
             )
@@ -120,7 +120,7 @@ class Dialog:
             'model': self.__chat_config.get('model'),
             'messages': messages,
             'temperature': self.__chat_config.get('temperature'),
-            'max_tokens': self.__chat_config.get('max_answer_len'),
+            'max_tokens': self.__chat_config.get('tokens_per_answer'),
             'timeout': 180
         }
 

@@ -692,26 +692,35 @@ async def handler(message: types.Message):
     except ai_core.ApiRequestException as e:
         await message.reply(f"Ошибка в работе бота: {e}")
         return
-    answer = utils.answer_parser(answer, chat_config)
+
+
     chat_queue = chats_queue.get(message.chat.id)
     if not chat_queue:
         chats_queue.update({message.chat.id: asyncio.Lock()})
         chat_queue = chats_queue.get(message.chat.id)
 
     locked = chat_queue.locked()
-    await chat_queue.acquire()
-    if locked:
-        await asyncio.sleep(3)
-    await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
-                             parse_mode=parse_mode, reply=True)
-    for paragraph in answer[1::]:
-        try:
-            await bot.send_chat_action(chat_id=message.chat.id, action='typing')
-        except exceptions.TelegramBadRequest:
-            pass
-        await asyncio.sleep(3)
-        await utils.send_message(message, bot, paragraph, chat_config.get('markdown_filter'), parse_mode=parse_mode)
-    chat_queue.release()
+    async with chat_queue:
+
+        if locked:
+            await asyncio.sleep(3)
+
+        if not answer.strip():
+            await utils.send_message(message, bot, "Ошибка: LLM отправила пустой ответ",
+                                     chat_config.get('markdown_filter'), parse_mode=parse_mode, reply=True)
+            return
+
+        answer = utils.answer_parser(answer, chat_config)
+
+        await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
+                                 parse_mode=parse_mode, reply=True)
+        for paragraph in answer[1::]:
+            try:
+                await bot.send_chat_action(chat_id=message.chat.id, action='typing')
+            except exceptions.TelegramBadRequest:
+                pass
+            await asyncio.sleep(3)
+            await utils.send_message(message, bot, paragraph, chat_config.get('markdown_filter'), parse_mode=parse_mode)
 
 
 @dp.inline_query(lambda inline_query: inline_query.query != '')

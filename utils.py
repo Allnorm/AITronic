@@ -30,7 +30,8 @@ CHAT_CONFIG_TEMPLATE = {
     'reply_to_quotes': True,
     'show_used_tokens': True,
     'allow_config_everyone': False,
-    'max_answer_len': 2000,
+    'tokens_per_answer': 2000,
+    'max_chunk_size': 3000,
     'summarizer_limit': 12000,
     'summariser_prompt': 'Create a short summary of the text previously discussed with the user.',
     'prefill_prompt': None,
@@ -41,7 +42,7 @@ MANDATORY_PARAMS = ('api_key', 'model')
 PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url', 'prefill_prompt')
 BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'markdown_filter', 'allow_config_everyone',
                'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
-INT_PARAMS = ('attempts', 'threads_limit', 'max_answer_len', 'summarizer_limit')
+INT_PARAMS = ('attempts', 'threads_limit', 'tokens_per_answer', 'max_chunk_size', 'summarizer_limit')
 
 
 class IncorrectConfig(Exception):
@@ -276,8 +277,10 @@ def config_validator(name, value) -> dict:
         raise IncorrectConfig(f'"{name_replace}" имеет недопустимое значение (допускается от 1 до 10).')
     if name == 'threads_limit' and not 1 <= value <= 10:
         raise IncorrectConfig(f'"{name_replace}" имеет недопустимое значение (допускается от 1 до 10).')
-    if name == 'max_answer_len' and value < 50:
+    if name == 'tokens_per_answer' and value < 50:
         raise IncorrectConfig(f'"{name_replace}" имеет недопустимое значение (допускается от 50).')
+    if name == 'max_chunk_size' and not 50 < value < 4096:
+        raise IncorrectConfig(f'"{name_replace}" имеет недопустимое значение (допускается от 50 до 4096).')
     if name == 'summarizer_limit' and value < 1000:
         raise IncorrectConfig(f'"{name_replace}" имеет недопустимое значение (допускается от 1000).')
     return {name: value}
@@ -331,7 +334,7 @@ def get_poll_text(message):
 
 
 def message_len_parser(text, config, fn_list):
-    max_len = config.get('max_answer_len')
+    max_len = config.get('max_chunk_size')
 
     while len(text) > max_len:
 
@@ -389,6 +392,15 @@ async def send_message(message, bot, text: str, markdown_filter, parse_mode=None
             await send_message(message, bot, text, markdown_filter, parse_mode=None, reply=reply)
         elif "text must be non-empty" in str(e) or 'message text is empty' in str(e):
             logging.warning(f"Failed to send empty message in chat! Message content: {text}")
+        elif "message is too long" in str('e'):
+            logging.error('Error sending message to chat - the text is too large. Try reducing the "max-chunk-size" '
+                          'parameter or enabling the "split-paragraphs" feature. The message text has been saved in '
+                          'the bot logs to prevent loss.')
+            logging.info(text)
+            message_too_long = ('Ошибка отправки сообщения в чат - текст слишком большой. Попробуйте уменьшить '
+                                'значение параметра "max-chunk-size" или включить функцию "split-paragraphs". Текст '
+                                'сообщения сохранён в логах бота во избежание утраты.')
+            await send_message(message, bot, message_too_long, markdown_filter, parse_mode=None, reply=reply)
         else:
             logging.error(traceback.format_exc())
 
