@@ -1,3 +1,4 @@
+import copy
 import uuid
 
 import aiogram.exceptions
@@ -22,7 +23,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.3.7'
+version = '1.3.8'
 
 dialogs = {}
 chats_queue = {}
@@ -53,7 +54,7 @@ async def start(message: types.Message):
 
 
 @dp.message(Command("reset"))
-async def confai(message: types.Message):
+async def reset(message: types.Message):
     if not await utils.check_whitelist(message, config):
         return
 
@@ -248,7 +249,7 @@ async def confai(message: types.Message):
             else:
                 await message.reply(f"Параметр {reset_param_name} не найден в списке параметров.{timer_text}")
         else:
-            chat_config = config.chat_config_template
+            chat_config = copy.deepcopy(config.chat_config_template)
             reset_param_name = ""
 
         try:
