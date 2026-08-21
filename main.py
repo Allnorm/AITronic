@@ -24,7 +24,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.3.9'
+version = '1.3.10'
 
 dialogs = {}
 chats_queue = {}
@@ -36,8 +36,7 @@ async def start(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id:
-                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -61,8 +60,7 @@ async def reset(message: types.Message):
 
     if not dialogs.get(message.chat.id):
         try:
-            dialogs.update({message.chat.id:
-                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -132,8 +130,7 @@ async def confai(message: types.Message):
 
     if dialogs.get(msg_chat_id) is None:
         try:
-            dialogs.update({msg_chat_id:
-                                ai_core.Dialog(msg_chat_id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({msg_chat_id: ai_core.Dialog(msg_chat_id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -239,11 +236,6 @@ async def confai(message: types.Message):
         reset_param_name = utils.extract_arg(message.text, 2)
         if reset_param_name:
             if reset_param_name.replace("-", "_") in chat_config:
-                if config.chat_config_template.keys() != chat_config.keys():
-                    await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
-                                        "(это могло произойти после обновления бота или повреждения данных в БД).\n"
-                                        f"Требуется сбросить настройки чата командой /confai reset.{timer_text}")
-                    return
                 chat_config.update({reset_param_name.replace("-", "_"):
                                         config.chat_config_template.get(reset_param_name.replace("-", "_"))})
                 reset_param_name = f"параметра {reset_param_name} "
@@ -260,12 +252,6 @@ async def confai(message: types.Message):
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка выполнения команды: {e}{timer_text}")
-        return
-
-    if config.chat_config_template.keys() != chat_config.keys():
-        await message.reply("Структура параметров чата не совпадает со структурой по умолчанию "
-                            "(это могло произойти после обновления бота или повреждения данных в БД).\n"
-                            f"Требуется сбросить настройки чата командой /confai reset.{timer_text}")
         return
 
     if param_name.replace("-", "_") not in chat_config:
@@ -301,8 +287,7 @@ async def template_(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id:
-                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -428,8 +413,7 @@ async def template_button(callback: types.CallbackQuery):
                                     f"в параметрах: {e} Требуется удалить или перезаписать шаблон.")
             return
         if dialogs.get(message.chat.id) is None:
-            dialogs.update({message.chat.id:
-                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
         dialogs.get(message.chat.id).set_chat_config(sql_helper, new_config, message.chat.id)
         await message.edit_text(f"Шаблон {template_name} успешно применён для данного чата.")
     except Exception as e:
@@ -493,8 +477,7 @@ async def confai_bool(callback: types.CallbackQuery):
 
     if dialogs.get(msg_chat_id) is None:
         try:
-            dialogs.update({msg_chat_id: ai_core.Dialog(msg_chat_id, config,
-                                                           sql_helper, config.chat_config_template)})
+            dialogs.update({msg_chat_id: ai_core.Dialog(msg_chat_id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")
@@ -589,7 +572,7 @@ async def inline_button(callback: types.CallbackQuery):
 
     if dialogs.get(user_id) is None:
         try:
-            dialogs.update({user_id: ai_core.Dialog(user_id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({user_id: ai_core.Dialog(user_id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await utils.edit_inline_message(msg_txt, f"❗Ошибка в работе бота: {e}", inline_message_id,
@@ -633,8 +616,7 @@ async def handler(message: types.Message):
 
     if dialogs.get(message.chat.id) is None:
         try:
-            dialogs.update({message.chat.id:
-                                ai_core.Dialog(message.chat.id, config, sql_helper, config.chat_config_template)})
+            dialogs.update({message.chat.id: ai_core.Dialog(message.chat.id, config, sql_helper)})
         except Exception as e:
             logging.error(traceback.format_exc())
             await message.reply(f"Ошибка в работе бота: {e}")

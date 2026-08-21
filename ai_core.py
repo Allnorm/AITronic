@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import traceback
@@ -17,36 +18,54 @@ class ApiRequestException(Exception):
 
 class Dialog:
 
-    __chat_config: dict
+    _chat_config: dict
 
-    def __init__(self, chat_id, global_config, sql_helper: sql_worker.SqlWorker, chat_config_template):
-        self.__chat_config = json.loads(sql_helper.get_dialog_data(chat_id, chat_config_template)[1])
+    def __init__(self, chat_id, global_config, sql_helper: sql_worker.SqlWorker):
+
+        try:
+            dialog_data = sql_helper.get_dialog_data(chat_id, global_config.chat_config_template)
+        except Exception as e:
+            dialog_data = []
+            logging.error(f"Error reading conversation information for chat ID {chat_id}! "
+                          f"Please check your database!")
+            logging.error(f"{e}\n{traceback.format_exc()}")
+
+        try:
+            self._chat_config = json.loads(dialog_data)[1]
+        except (json.JSONDecodeError, TypeError):
+            logging.error(f'Error reading chat parameters for chat ID {chat_id}! Default settings will be used.')
+            self._chat_config = copy.deepcopy(global_config.chat_config_template)
+
+        if global_config.chat_config_template.keys() != self._chat_config.keys():
+            self._chat_config = self.config_normalizer(global_config.chat_config_template, self._chat_config)
+
+            try:
+                sql_helper.dialog_conf_update(self._chat_config, chat_id)
+            except Exception as e:
+                logging.error(f"Error writing chat configuration with ID {chat_id} "
+                              f"to the database after normalization!")
+                logging.error(f"{e}\n{traceback.format_exc()}")
+
         self.summarizer_used = False
-        self.threads_semaphore = asyncio.Semaphore(self.__chat_config.get('threads_limit'))
+        self.threads_semaphore = asyncio.Semaphore(self._chat_config.get('threads_limit'))
         self.global_config = global_config
         self.sql_helper = sql_helper
         self.chat_id = chat_id
         self.memory_dump = None
-
-        try:
-            dialog_data = sql_helper.get_dialog_data(chat_id)
-        except Exception as e:
-            dialog_data = []
-            logging.error("AITronic was unable to read conversation information! Please check your database!")
-            logging.error(f"{e}\n{traceback.format_exc()}")
         self.dialog_history = []
+
         if dialog_data and dialog_data[2]:
             self.dialog_history = json.loads(dialog_data[2])
             # Pictures saved in the database may cause problems when working without Vision
-            if not self.__chat_config.get('vision'):
+            if not self._chat_config.get('vision'):
                 self.dialog_history = self.cleaning_images(self.dialog_history)
-        self.system_prompt = self.__chat_config.get('system_prompt')
+        self.system_prompt = self._chat_config.get('system_prompt')
         self.client = self.make_client()
 
     def make_client(self):
-        api_key = self.__chat_config.get('api_key')
-        base_url = self.__chat_config.get('base_url')
-        vendor = self.__chat_config.get('vendor')
+        api_key = self._chat_config.get('api_key')
+        base_url = self._chat_config.get('base_url')
+        vendor = self._chat_config.get('vendor')
         if not api_key:
             return None
         if vendor == 'anthropic':
@@ -60,10 +79,10 @@ class Dialog:
 
     @property
     def chat_config(self):
-        return self.__chat_config
+        return self._chat_config
 
     def set_chat_config(self, sql_helper, chat_config, msg_chat_id, param_name=None):
-        self.__chat_config = chat_config
+        self._chat_config = chat_config
         if not param_name:
             self.cleaning_images(self.dialog_history)
             self.client = self.make_client()
@@ -72,6 +91,17 @@ class Dialog:
         elif param_name in ('vendor', 'api_key', 'base_url'):
             self.client = self.make_client()
         sql_helper.dialog_conf_update(chat_config, msg_chat_id)
+
+    @staticmethod
+    def config_normalizer(global_config, chat_config):
+        """Aligns chat settings with the chat settings template. Useful if the template has changed after an update."""
+        for key in set(chat_config) - set(global_config):
+            del chat_config[key]
+
+        for key in set(global_config) - set(chat_config):
+            chat_config[key] = copy.deepcopy(global_config[key])
+
+        return chat_config
 
     @staticmethod
     def html_parser(exc_text):
@@ -85,18 +115,18 @@ class Dialog:
 
     def send_api_request_openai(self, messages):
 
-        if self.__chat_config.get('system_prompt'):
-            system = [{"role": "system", "content": self.__chat_config.get('system_prompt')}]
+        if self._chat_config.get('system_prompt'):
+            system = [{"role": "system", "content": self._chat_config.get('system_prompt')}]
             system.extend(messages)
             messages = system
 
         completion = 'The "completion" object was not received.'
         try:
             completion = self.client.chat.completions.create(
-                model=self.__chat_config.get('model'),
+                model=self._chat_config.get('model'),
                 messages=messages,
-                temperature=self.__chat_config.get('temperature'),
-                max_tokens=self.__chat_config.get('tokens_per_answer'),
+                temperature=self._chat_config.get('temperature'),
+                max_tokens=self._chat_config.get('tokens_per_answer'),
                 stream=False,
                 timeout=180
             )
@@ -117,15 +147,15 @@ class Dialog:
         completion = 'The "completion" object was not received.'
 
         kwargs = {
-            'model': self.__chat_config.get('model'),
+            'model': self._chat_config.get('model'),
             'messages': messages,
-            'temperature': self.__chat_config.get('temperature'),
-            'max_tokens': self.__chat_config.get('tokens_per_answer'),
+            'temperature': self._chat_config.get('temperature'),
+            'max_tokens': self._chat_config.get('tokens_per_answer'),
             'timeout': 180
         }
 
-        if self.__chat_config.get('system_prompt'):
-            kwargs.update({'system': self.__chat_config.get('system_prompt')})
+        if self._chat_config.get('system_prompt'):
+            kwargs.update({'system': self._chat_config.get('system_prompt')})
 
         # Repackaging the OpenAI API format into an Anthropic API on the fly
         for message in messages:
@@ -144,7 +174,7 @@ class Dialog:
                         {"type": "text", "text": photo_text}]
                 })
 
-        if not self.__chat_config.get('stream'):
+        if not self._chat_config.get('stream'):
             kwargs.update({'stream': False})
             try:
                 completion = self.client.messages.create(**kwargs)
@@ -202,8 +232,8 @@ class Dialog:
             raise ApiRequestException(self.html_parser(e))
 
     async def send_api_request(self, messages):
-        attempts = self.__chat_config.get('attempts')
-        if self.__chat_config.get('vendor') == 'anthropic':
+        attempts = self._chat_config.get('attempts')
+        if self._chat_config.get('vendor') == 'anthropic':
             func = self.send_api_request_anthropic
         else:
             func = self.send_api_request_openai
@@ -247,8 +277,8 @@ class Dialog:
         prompt = f'{reply_msg_text}{main_text}'
 
         prefill_ass = None
-        prefill_mode = self.__chat_config.get('prefill_mode')
-        prefill_prompt = self.__chat_config.get('prefill_prompt')
+        prefill_mode = self._chat_config.get('prefill_mode')
+        prefill_prompt = self._chat_config.get('prefill_prompt')
         if prefill_prompt:
             if prefill_mode == 'assistant':
                 prefill_ass = {"role": "assistant", "content": prefill_prompt}
@@ -284,17 +314,17 @@ class Dialog:
         else:
             self.dialog_history.extend([{"role": "user", "content": prompt},
                                         {"role": "assistant", "content": answer}])
-        if self.__chat_config.get('vision') and len(self.dialog_history) > 10:
+        if self._chat_config.get('vision') and len(self.dialog_history) > 10:
             self.dialog_history = self.cleaning_images(self.dialog_history, last_only=True)
-        if total_tokens >= self.__chat_config.get('summarizer_limit') and not self.summarizer_used:
-            logging.info(f"The token limit {self.__chat_config.get('summarizer_limit')} for "
+        if total_tokens >= self._chat_config.get('summarizer_limit') and not self.summarizer_used:
+            logging.info(f"The token limit {self._chat_config.get('summarizer_limit')} for "
                          f"the {chat_name} has been exceeded. Using a lazy summarizer")
             try:
                 await self.summarizer(chat_name)
             except ApiRequestException as e:
                 message.reply(f"Ошибка суммарайзинга диалога: {e}.\nПросьба проверить логи бота!")
 
-        if self.__chat_config.get('show_used_tokens'):
+        if self._chat_config.get('show_used_tokens'):
             answer = utils.token_counter_formatter(answer, total_tokens, input_tokens, output_tokens)
         try:
             self.sql_helper.dialog_update(self.dialog_history, self.chat_id)
@@ -304,7 +334,7 @@ class Dialog:
             message.reply(f"Ошибка записи ответа нейросети в БД: {e}.\n"
                           f"Контекст разговора будет утрачен после перезапуска бота!")
         self.threads_semaphore.release()
-        if self.threads_semaphore._value >= self.__chat_config.get('threads_limit') and self.summarizer_used:
+        if self.threads_semaphore._value >= self._chat_config.get('threads_limit') and self.summarizer_used:
             self.summarizer_used = False
         return answer
 
@@ -340,17 +370,17 @@ class Dialog:
         logging.info(f'{total_tokens} tokens counted by the OpenAI API in {chat_name}.')
         self.dialog_history.extend([{"role": "user", "content": main_text},
                                     {"role": "assistant", "content": answer}])
-        if self.__chat_config.get('vision') and len(self.dialog_history) > 10:
+        if self._chat_config.get('vision') and len(self.dialog_history) > 10:
             self.dialog_history = self.cleaning_images(self.dialog_history, last_only=True)
-        if total_tokens >= self.__chat_config.get('summarizer_limit') and not self.summarizer_used:
-            logging.info(f"The token limit {self.__chat_config.get('summarizer_limit')} for "
+        if total_tokens >= self._chat_config.get('summarizer_limit') and not self.summarizer_used:
+            logging.info(f"The token limit {self._chat_config.get('summarizer_limit')} for "
                          f"the {chat_name} has been exceeded. Using a lazy summarizer")
             try:
                 await self.summarizer(chat_name)
             except ApiRequestException:
                 pass
 
-        if self.__chat_config.get('show_used_tokens'):
+        if self._chat_config.get('show_used_tokens'):
             answer = utils.token_counter_formatter(answer, total_tokens, input_tokens, output_tokens)
         try:
             self.sql_helper.dialog_update(self.dialog_history, self.chat_id)
@@ -360,7 +390,7 @@ class Dialog:
             pass
 
         self.threads_semaphore.release()
-        if self.threads_semaphore._value >= self.__chat_config.get('threads_limit') and self.summarizer_used:
+        if self.threads_semaphore._value >= self._chat_config.get('threads_limit') and self.summarizer_used:
             self.summarizer_used = False
         return answer
 
@@ -404,7 +434,7 @@ class Dialog:
         self.summarizer_used = True
         split = self.summarizer_index()
         compressed_dialogue = self.dialog_history[:split:]
-        compressed_dialogue.append({"role": "user", "content": f'{self.__chat_config.get("summariser_prompt")}'})
+        compressed_dialogue.append({"role": "user", "content": f'{self._chat_config.get("summariser_prompt")}'})
 
         # When sending pictures to the summarizer, it does not work correctly, so we delete them
         compressed_dialogue = self.cleaning_images(compressed_dialogue)
@@ -422,7 +452,7 @@ class Dialog:
             raise e
 
         logging.info(f"Summarizing completed for {chat_name}, {total_tokens} tokens were used")
-        summarizer_data = [{"role": "user", "content": f'{self.__chat_config.get("summariser_prompt")}'},
+        summarizer_data = [{"role": "user", "content": f'{self._chat_config.get("summariser_prompt")}'},
                            {"role": "assistant", "content": answer}]
         summarizer_data.extend(self.dialog_history[split::])
         self.dialog_history = summarizer_data
