@@ -26,6 +26,7 @@ CHAT_CONFIG_TEMPLATE = {
     'threads_limit': 10,
     'markdown_enable': True,
     'markdown_filter': True,
+    'latex_filter': True,
     'split_paragraphs': False,
     'reply_to_quotes': True,
     'show_used_tokens': True,
@@ -41,7 +42,7 @@ CHAT_CONFIG_TEMPLATE = {
 MANDATORY_PARAMS = ('api_key', 'model')
 PRIVATE_PARAMS = ('api_key', 'system_prompt', 'base_url', 'prefill_prompt')
 BOOL_PARAMS = ('vision', 'stream_mode', 'markdown_enable', 'markdown_filter', 'allow_config_everyone',
-               'split_paragraphs', 'reply_to_quotes', 'show_used_tokens')
+               'split_paragraphs', 'reply_to_quotes', 'show_used_tokens', 'latex_filter')
 INT_PARAMS = ('attempts', 'threads_limit', 'tokens_per_answer', 'max_chunk_size', 'summarizer_limit')
 
 

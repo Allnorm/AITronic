@@ -12,6 +12,7 @@ from aiogram import types, Bot, Dispatcher, exceptions
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from pylatexenc.latex2text import LatexNodes2Text
 
 import ai_core
 import sql_worker
@@ -23,7 +24,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
-version = '1.3.8'
+version = '1.3.9'
 
 dialogs = {}
 chats_queue = {}
@@ -713,13 +714,21 @@ async def handler(message: types.Message):
 
         answer = utils.answer_parser(answer, chat_config)
 
-        await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
-                                 parse_mode=parse_mode, reply=True)
-        for paragraph in answer[1::]:
+        for index, paragraph in enumerate(answer):
+
+            if chat_config.get('latex_filter') and ('$' in paragraph or '\\' in paragraph):
+                answer[index] = LatexNodes2Text().latex_to_text(paragraph)
+
+            if not index:
+                await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
+                                         parse_mode=parse_mode, reply=True)
+                continue
+
             try:
                 await bot.send_chat_action(chat_id=message.chat.id, action='typing')
             except exceptions.TelegramBadRequest:
                 pass
+
             await asyncio.sleep(3)
             await utils.send_message(message, bot, paragraph, chat_config.get('markdown_filter'), parse_mode=parse_mode)
 

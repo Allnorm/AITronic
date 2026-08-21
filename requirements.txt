@@ -1,4 +1,5 @@
+pylatexenc>=2.11
 aiogram>=3.20.0
-anthropic>=0.51.0
+anthropic>=1.0.0
 html2text>=2025.4.15
-openai>=1.93.0
+openai>=3.3.1
