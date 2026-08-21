@@ -34,6 +34,7 @@ class Dialog:
             self._chat_config = json.loads(dialog_data)[1]
         except (json.JSONDecodeError, TypeError):
             logging.error(f'Error reading chat parameters for chat ID {chat_id}! Default settings will be used.')
+            logging.error(traceback.format_exc())
             self._chat_config = copy.deepcopy(global_config.chat_config_template)
 
         if global_config.chat_config_template.keys() != self._chat_config.keys():
