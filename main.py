@@ -24,6 +24,7 @@ bot = Bot(token=config.token)
 dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
+latex_fixer = LatexNodes2Text()
 version = '1.3.10'
 
 dialogs = {}
@@ -699,7 +700,7 @@ async def handler(message: types.Message):
         for index, paragraph in enumerate(answer):
 
             if chat_config.get('latex_filter') and ('$' in paragraph or '\\' in paragraph):
-                answer[index] = LatexNodes2Text().latex_to_text(paragraph)
+                answer[index] = latex_fixer.latex_to_text(paragraph)
 
             if not index:
                 await utils.send_message(message, bot, answer[0], chat_config.get('markdown_filter'),
