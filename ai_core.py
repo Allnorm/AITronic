@@ -31,7 +31,7 @@ class Dialog:
             logging.error(f"{e}\n{traceback.format_exc()}")
 
         try:
-            self._chat_config = json.loads(dialog_data)[1]
+            self._chat_config = json.loads(dialog_data[1])
         except (json.JSONDecodeError, TypeError):
             logging.error(f'Error reading chat parameters for chat ID {chat_id}! Default settings will be used.')
             logging.error(traceback.format_exc())
