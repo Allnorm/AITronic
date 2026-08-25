@@ -25,7 +25,7 @@ dp = Dispatcher()
 sql_helper = sql_worker.SqlWorker()
 inline_worker = utils.InlineWorker()
 latex_fixer = LatexNodes2Text()
-version = '1.3.10'
+version = '1.3.11'
 
 dialogs = {}
 chats_queue = {}
@@ -604,6 +604,9 @@ async def inline_button(callback: types.CallbackQuery):
         await utils.edit_inline_message(msg_txt, f'❌ Ошибка в работе бота: {e}', inline_message_id,
                                         config.full_debug, bot, None, parse_mode)
         return
+
+    if chat_config.get('latex_filter') and ('$' in answer or '\\' in answer):
+        answer = latex_fixer.latex_to_text(answer)
 
     await utils.edit_inline_message(msg_txt, 'Ответ:', inline_message_id,
                                     config.full_debug, bot, None, parse_mode, f'\n{answer}')
